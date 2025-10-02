@@ -4,22 +4,53 @@ import { fetchAllMissions, fetchAllResources, fetchAllQuotes } from "@/lib/admin
 import AdminPageClient from "@/components/admin-page-client"
 
 export default async function AdminPage() {
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    const supabase = await createServerClient()
 
-  if (!user) {
+    console.log("[v0] Admin page: checking authentication...")
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    console.log("[v0] Admin page: user check complete", { hasUser: !!user, error: userError?.message })
+
+    if (!user) {
+      console.log("[v0] Admin page: no user, redirecting to login")
+      redirect("/login")
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single()
+
+    console.log("[v0] Admin page: profile check complete", {
+      hasProfile: !!profile,
+      isAdmin: profile?.is_admin,
+      error: profileError?.message,
+    })
+
+    if (!profile?.is_admin) {
+      console.log("[v0] Admin page: user is not admin, redirecting to home")
+      redirect("/")
+    }
+
+    console.log("[v0] Admin page: fetching data...")
+    const [missions, resources, quotes] = await Promise.all([fetchAllMissions(), fetchAllResources(), fetchAllQuotes()])
+
+    console.log("[v0] Admin page: data fetched successfully", {
+      missionsCount: missions.length,
+      resourcesCount: resources.length,
+      quotesCount: quotes.length,
+    })
+
+    return <AdminPageClient initialMissions={missions} initialResources={resources} initialQuotes={quotes} />
+  } catch (error) {
+    console.error("[v0] Admin page error:", error)
+    // If there's an error, redirect to login
     redirect("/login")
   }
-
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
-
-  if (!profile?.is_admin) {
-    redirect("/")
-  }
-
-  const [missions, resources, quotes] = await Promise.all([fetchAllMissions(), fetchAllResources(), fetchAllQuotes()])
-
-  return <AdminPageClient initialMissions={missions} initialResources={resources} initialQuotes={quotes} />
 }
