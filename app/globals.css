@@ -1,0 +1,211 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* EVERYONE Brand Colors */
+  --everyone-green: #005956;
+  --everyone-gold: #b39759;
+  --everyone-brown: #3e3200;
+  --everyone-pale-gold: #efeadd;
+  --everyone-pale-green: #92bcb3;
+
+  /* Semantic Color Variables with EVERYONE Brand Colors */
+  --background: #fefefe;
+  --foreground: var(--everyone-brown);
+  --card: rgba(255, 255, 255, 0.95);
+  --card-foreground: var(--everyone-brown);
+  --popover: rgba(255, 255, 255, 0.98);
+  --popover-foreground: var(--everyone-brown);
+  --primary: var(--everyone-green);
+  --primary-foreground: #ffffff;
+  --secondary: var(--everyone-pale-gold);
+  --secondary-foreground: var(--everyone-brown);
+  --muted: var(--everyone-pale-gold);
+  --muted-foreground: #6b7280;
+  --accent: var(--everyone-gold);
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 89, 86, 0.2);
+  --input: rgba(0, 89, 86, 0.1);
+  --ring: var(--everyone-green);
+  --chart-1: var(--everyone-green);
+  --chart-2: var(--everyone-gold);
+  --chart-3: var(--everyone-pale-green);
+  --chart-4: var(--everyone-brown);
+  --chart-5: var(--everyone-pale-gold);
+  --radius: 0.75rem;
+  --sidebar: var(--everyone-pale-gold);
+  --sidebar-foreground: var(--everyone-brown);
+  --sidebar-primary: var(--everyone-green);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--everyone-gold);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(0, 89, 86, 0.2);
+  --sidebar-ring: var(--everyone-green);
+}
+
+.dark {
+  --background: #0a0f0e;
+  --foreground: var(--everyone-pale-gold);
+  --card: rgba(0, 89, 86, 0.1);
+  --card-foreground: var(--everyone-pale-gold);
+  --popover: rgba(0, 89, 86, 0.15);
+  --popover-foreground: var(--everyone-pale-gold);
+  --primary: var(--everyone-pale-green);
+  --primary-foreground: var(--everyone-brown);
+  --secondary: rgba(0, 89, 86, 0.2);
+  --secondary-foreground: var(--everyone-pale-gold);
+  --muted: rgba(0, 89, 86, 0.15);
+  --muted-foreground: #9ca3af;
+  --accent: var(--everyone-gold);
+  --accent-foreground: var(--everyone-brown);
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(146, 188, 179, 0.2);
+  --input: rgba(146, 188, 179, 0.1);
+  --ring: var(--everyone-pale-green);
+  --chart-1: var(--everyone-pale-green);
+  --chart-2: var(--everyone-gold);
+  --chart-3: var(--everyone-green);
+  --chart-4: var(--everyone-pale-gold);
+  --chart-5: var(--everyone-brown);
+  --sidebar: rgba(0, 89, 86, 0.1);
+  --sidebar-foreground: var(--everyone-pale-gold);
+  --sidebar-primary: var(--everyone-pale-green);
+  --sidebar-primary-foreground: var(--everyone-brown);
+  --sidebar-accent: var(--everyone-gold);
+  --sidebar-accent-foreground: var(--everyone-brown);
+  --sidebar-border: rgba(146, 188, 179, 0.2);
+  --sidebar-ring: var(--everyone-pale-green);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply text-foreground;
+    /* Removed SVG background pattern, keeping only the gradient */
+    background: linear-gradient(135deg, var(--everyone-pale-gold) 0%, #ffffff 50%, var(--everyone-pale-green) 100%);
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    min-height: 100vh;
+  }
+
+  .dark body {
+    /* Removed SVG background pattern from dark mode too */
+    background: linear-gradient(135deg, #0a0f0e 0%, rgba(0, 89, 86, 0.1) 50%, rgba(146, 188, 179, 0.05) 100%);
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0.95;
+  }
+}
+
+/* EVERYONE Brand Typography */
+.everyone-heading {
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: -0.02em;
+  color: var(--everyone-green);
+}
+
+.everyone-subheading {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--everyone-brown);
+}
+
+.dark .everyone-heading {
+  color: var(--everyone-pale-green);
+}
+
+.dark .everyone-subheading {
+  color: var(--everyone-pale-gold);
+}
+
+/* Add performance optimizations and accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Optimize animations for better performance */
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Add will-change for better performance on animated elements */
+.hover\:scale-105:hover,
+.hover\:scale-\[1\.02\]:hover,
+.transition-all,
+.transition-transform {
+  will-change: transform;
+}
+
+/* Improve touch targets for mobile */
+@media (max-width: 768px) {
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
