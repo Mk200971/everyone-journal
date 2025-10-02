@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -66,13 +66,15 @@ export function DynamicFormRenderer({
   showSuccessDialogOnSubmit = false,
 }: DynamicFormRendererProps) {
   const router = useRouter()
-  const memoizedSchema = useMemo(() => schema, [schema])
-  const memoizedInitialAnswers = useMemo(() => initialAnswers || {}, [initialAnswers])
-  const memoizedInitialMediaUrls = useMemo(() => initialMediaUrls, [initialMediaUrls])
 
-  const [formData, setFormData] = useState<any>(memoizedInitialAnswers)
+  const initializedRef = useRef(false)
+  const schemaRef = useRef(schema)
+
+  const memoizedSchema = useMemo(() => schema, [schema])
+
+  const [formData, setFormData] = useState<any>(() => initialAnswers || {})
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
-  const [existingMediaUrls, setExistingMediaUrls] = useState<string[]>(memoizedInitialMediaUrls)
+  const [existingMediaUrls, setExistingMediaUrls] = useState<string[]>(() => initialMediaUrls)
   const [removedMediaUrls, setRemovedMediaUrls] = useState<string[]>([])
   const [groupInstances, setGroupInstances] = useState<{ [key: string]: number }>({})
   const [internalIsSubmitting, setInternalIsSubmitting] = useState(false)
@@ -82,16 +84,53 @@ export function DynamicFormRenderer({
   const isSubmittingState = externalIsSubmitting !== undefined ? externalIsSubmitting : internalIsSubmitting
 
   useEffect(() => {
-    if (initialAnswers && Object.keys(initialAnswers).length > 0) {
-      setFormData(initialAnswers)
-    }
-  }, [initialAnswers])
+    if (!memoizedSchema || initializedRef.current) return
+
+    const newGroupInstances: { [key: string]: number } = {}
+    const newFormData = { ...formData }
+
+    memoizedSchema.fields.forEach((field) => {
+      if (field.type === "group" && field.repeat && field.fields) {
+        // Check if we already have data for this group
+        const existingData = formData[field.name]
+
+        if (existingData && Array.isArray(existingData) && existingData.length > 0) {
+          // Use existing data length
+          newGroupInstances[field.name] = existingData.length
+        } else {
+          // Initialize with minimum instances
+          newGroupInstances[field.name] = field.repeat.min
+
+          // Create initial data structure
+          const initialData = Array.from({ length: field.repeat.min }, () => {
+            const groupData = {}
+            field.fields?.forEach((subField) => {
+              groupData[subField.name] = ""
+            })
+            return groupData
+          })
+
+          newFormData[field.name] = initialData
+        }
+      }
+    })
+
+    setGroupInstances(newGroupInstances)
+    setFormData(newFormData)
+    initializedRef.current = true
+  }, [memoizedSchema])
 
   useEffect(() => {
-    if (initialMediaUrls && initialMediaUrls.length > 0) {
+    if (initialAnswers && Object.keys(initialAnswers).length > 0 && initializedRef.current) {
+      setFormData(initialAnswers)
+    }
+  }, [JSON.stringify(initialAnswers)])
+
+  useEffect(() => {
+    if (initialMediaUrls && initialMediaUrls.length > 0 && initializedRef.current) {
       setExistingMediaUrls(initialMediaUrls)
     }
-  }, [initialMediaUrls])
+  }, [JSON.stringify(initialMediaUrls)])
 
   const removeExistingMedia = useCallback((url: string) => {
     setExistingMediaUrls((prev) => prev.filter((u) => u !== url))
@@ -147,11 +186,6 @@ export function DynamicFormRenderer({
           [fieldName]: currentCount + 1,
         }))
 
-        const newIndex = currentCount
-        if (!formData[fieldName]) {
-          setFormData((prev: any) => ({ ...prev, [fieldName]: [] }))
-        }
-
         const newGroupData = {}
         field.fields?.forEach((subField) => {
           newGroupData[subField.name] = ""
@@ -163,7 +197,7 @@ export function DynamicFormRenderer({
         }))
       }
     },
-    [memoizedSchema, groupInstances, formData],
+    [memoizedSchema, groupInstances],
   )
 
   const removeGroupInstance = useCallback(
@@ -272,17 +306,6 @@ export function DynamicFormRenderer({
           const instanceCount = groupInstances[field.name] || field.repeat.min
           const instances = Array.from({ length: instanceCount }, (_, i) => i)
 
-          if (!formData[field.name]) {
-            const initialData = Array.from({ length: field.repeat.min }, () => {
-              const groupData = {}
-              field.fields?.forEach((subField) => {
-                groupData[subField.name] = ""
-              })
-              return groupData
-            })
-            setFormData((prev: any) => ({ ...prev, [field.name]: initialData }))
-          }
-
           return (
             <div key={fieldPath} className="space-y-4">
               <div className="flex justify-between items-center">
@@ -336,7 +359,7 @@ export function DynamicFormRenderer({
           return null
       }
     },
-    [getFormValue, updateFormData, groupInstances, formData, addGroupInstance, removeGroupInstance],
+    [getFormValue, updateFormData, groupInstances, addGroupInstance, removeGroupInstance],
   )
 
   const handleSaveProgress = useCallback(async () => {

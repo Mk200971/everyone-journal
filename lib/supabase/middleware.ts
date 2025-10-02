@@ -15,7 +15,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -25,6 +25,8 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
+  // IMPORTANT: Do not run code between createServerClient and supabase.auth.getUser()
+  // A simple mistake could make it very hard to debug issues with users being randomly logged out
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -45,5 +47,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url))
   }
 
+  // IMPORTANT: You *must* return the supabaseResponse object as it is
+  // If you're creating a new response object, make sure to copy over the cookies
   return supabaseResponse
 }
