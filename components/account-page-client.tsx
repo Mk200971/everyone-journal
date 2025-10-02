@@ -11,9 +11,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { Edit, CheckCircle, Eye, ExternalLink, History } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { updateProfile, updateAvatar } from "@/lib/actions"
 import { useState, useRef } from "react"
+import { useRouter } from "next/navigation"
 
 interface AccountPageClientProps {
   initialData: {
@@ -28,6 +28,7 @@ interface AccountPageClientProps {
 
 export function AccountPageClient({ initialData }: AccountPageClientProps) {
   const { toast } = useToast()
+  const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState(initialData.profile)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
@@ -57,13 +58,7 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
 
       await updateAvatar(formData)
 
-      const supabase = createClient()
-      const { data: updatedProfile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", initialData.user.id)
-        .single()
-      setProfile(updatedProfile)
+      router.refresh()
 
       toast({
         title: "Success",

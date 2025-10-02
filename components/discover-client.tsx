@@ -41,29 +41,18 @@ interface DiscoverClientProps {
     missions: Mission[]
     profiles: Profile[]
   }
+  currentUserId: string | null
 }
 
-export function DiscoverClient({ initialData }: DiscoverClientProps) {
+export function DiscoverClient({ initialData, currentUserId }: DiscoverClientProps) {
   const [selectedType, setSelectedType] = useState<string>("All")
   const [likes, setLikes] = useState<Record<string, number>>({})
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set())
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const supabase = createClient()
 
   // Create lookup maps
   const missionsMap = useMemo(() => new Map(initialData.missions.map((m) => [m.id, m])), [initialData.missions])
   const profilesMap = useMemo(() => new Map(initialData.profiles.map((p) => [p.id, p])), [initialData.profiles])
-
-  // Get current user
-  useEffect(() => {
-    const getCurrentUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setCurrentUserId(user?.id || null)
-    }
-    getCurrentUser()
-  }, [supabase])
 
   // Fetch likes for all submissions
   useEffect(() => {

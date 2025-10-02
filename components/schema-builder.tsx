@@ -32,7 +32,7 @@ interface SchemaBuilderProps {
   className?: string
 }
 
-export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }: SchemaBuilderProps) {
+const SchemaBuilder = ({ initialSchema, onSchemaChange, className = "" }: SchemaBuilderProps) => {
   const [schema, setSchema] = useState<FormSchema>(
     initialSchema || {
       version: 1,
@@ -442,3 +442,5 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
     </div>
   )
 }
+
+export default SchemaBuilder

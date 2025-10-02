@@ -25,9 +25,17 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
+  // This prevents session timeout issues
   const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession()
+
+  if (sessionError) {
+    console.error("Session refresh error:", sessionError)
+  }
+
+  const user = session?.user ?? null
 
   const protectedRoutes = ["/account", "/mission", "/leaderboard", "/admin"]
   const authRoutes = ["/auth/login", "/auth/sign-up"]

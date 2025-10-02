@@ -16,11 +16,9 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { MissionCard } from "@/components/mission-card"
 import { MissionFilter } from "@/components/mission-filter"
-import { useState, useEffect, useMemo, useCallback } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { useState, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { fetchAllCommunityActivity } from "@/lib/actions"
 
 interface Mission {
   id: string
@@ -85,109 +83,13 @@ interface HomePageClientProps {
 }
 
 export function HomePageClient({ initialData }: HomePageClientProps) {
-  const [missions, setMissions] = useState<Mission[]>(initialData.missions)
-  const [resources, setResources] = useState<Resource[]>(initialData.resources)
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>(initialData.recentActivity)
-  const [topUsers, setTopUsers] = useState<LeaderboardEntry[]>(initialData.topUsers)
+  const missions = initialData.missions
+  const resources = initialData.resources
+  const recentActivity = initialData.recentActivity
+  const topUsers = initialData.topUsers
+
   const [selectedType, setSelectedType] = useState("All")
   const [selectedResourceType, setSelectedResourceType] = useState("All Resources")
-
-  useEffect(() => {
-    if (!initialData.user) return
-
-    const supabase = createClient()
-    let mounted = true
-
-    const fetchRecentActivity = async () => {
-      if (!mounted) return
-      try {
-        const result = await fetchAllCommunityActivity()
-        if (mounted && result.success) {
-          setRecentActivity(result.data)
-        }
-      } catch (error) {
-        console.error("Error fetching activity:", error)
-      }
-    }
-
-    const fetchTopUsers = async () => {
-      if (!mounted) return
-      try {
-        const { data: profiles, error } = await supabase
-          .from("profiles")
-          .select(`
-            id, 
-            name, 
-            avatar_url, 
-            total_points,
-            job_title,
-            department
-          `)
-          .order("total_points", { ascending: false })
-          .limit(3)
-
-        if (mounted && !error && profiles) {
-          const profilesWithActivity = await Promise.all(
-            profiles.map(async (profile) => {
-              const { count } = await supabase
-                .from("submissions")
-                .select("id", { count: "exact", head: true })
-                .eq("user_id", profile.id)
-                .eq("status", "approved")
-
-              return {
-                ...profile,
-                rank: profiles.indexOf(profile) + 1,
-                activityCount: count || 0,
-              }
-            }),
-          )
-          setTopUsers(profilesWithActivity)
-        }
-      } catch (error) {
-        console.error("Error fetching top users:", error)
-      }
-    }
-
-    const submissionsChannel = supabase
-      .channel("public:submissions")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "submissions",
-        },
-        () => {
-          if (mounted) fetchRecentActivity()
-        },
-      )
-      .subscribe()
-
-    const profilesChannel = supabase
-      .channel("public:profiles")
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "profiles",
-        },
-        () => {
-          if (mounted) {
-            fetchTopUsers()
-            fetchRecentActivity()
-          }
-        },
-      )
-      .subscribe()
-
-    return () => {
-      mounted = false
-      submissionsChannel.unsubscribe()
-      profilesChannel.unsubscribe()
-    }
-  }, [initialData.user])
 
   const filteredMissions = useMemo(
     () =>
