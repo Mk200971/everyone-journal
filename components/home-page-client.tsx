@@ -84,7 +84,7 @@ interface HomePageClientProps {
   initialData: HomePageData
 }
 
-function HomePageClient({ initialData }: HomePageClientProps) {
+export function HomePageClient({ initialData }: HomePageClientProps) {
   const [missions, setMissions] = useState<Mission[]>(initialData.missions)
   const [resources, setResources] = useState<Resource[]>(initialData.resources)
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>(initialData.recentActivity)
@@ -678,32 +678,3 @@ function HomePageClient({ initialData }: HomePageClientProps) {
     </>
   )
 }
-
-function ErrorFallback({ error }: { error: Error }) {
-  return (
-    <div className="text-center py-12">
-      <p className="text-red-500">Something went wrong. Please refresh the page.</p>
-      <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-primary text-white rounded">
-        Refresh Page
-      </button>
-    </div>
-  )
-}
-
-function SafeHomePageClient(props: HomePageClientProps) {
-  const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    const handleError = () => setHasError(true)
-    window.addEventListener("error", handleError)
-    return () => window.removeEventListener("error", handleError)
-  }, [])
-
-  if (hasError) {
-    return <ErrorFallback error={new Error("Render error")} />
-  }
-
-  return <HomePageClient {...props} />
-}
-
-export { SafeHomePageClient as HomePageClient }

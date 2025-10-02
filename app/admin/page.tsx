@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -100,6 +100,9 @@ export default function AdminPage() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null) // Added state for dragged index
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
+  const [isCreatingMission, startCreateTransition] = useTransition()
+  const [isUpdatingMission, startUpdateTransition] = useTransition()
+
   const missionTypes = [
     { value: "Action", label: "Action" },
     { value: "Core", label: "Core" },
@@ -157,53 +160,57 @@ export default function AdminPage() {
   }
 
   const handleCreateMission = async (formData: FormData) => {
-    try {
-      console.log("[v0] Starting mission creation...")
-      if (createMissionSchema) {
-        formData.set("submission_schema", JSON.stringify(createMissionSchema))
+    startCreateTransition(async () => {
+      try {
+        console.log("[v0] Starting mission creation...")
+        if (createMissionSchema) {
+          formData.set("submission_schema", JSON.stringify(createMissionSchema))
+        }
+        await createMission(formData)
+        console.log("[v0] Mission creation successful")
+        setIsAddDialogOpen(false)
+        setCreateMissionSchema(null)
+        await fetchMissions()
+        toast({
+          title: "Mission Created",
+          description: "The mission has been created successfully.",
+        })
+      } catch (error) {
+        console.error("[v0] Failed to create mission:", error)
+        toast({
+          title: "Creation Failed",
+          description: `Failed to create mission: ${error instanceof Error ? error.message : "Unknown error"}`,
+          variant: "destructive",
+        })
       }
-      await createMission(formData)
-      console.log("[v0] Mission creation successful")
-      setIsAddDialogOpen(false)
-      setCreateMissionSchema(null)
-      await fetchMissions()
-      toast({
-        title: "Mission Created",
-        description: "The mission has been created successfully.",
-      })
-    } catch (error) {
-      console.error("[v0] Failed to create mission:", error)
-      toast({
-        title: "Creation Failed",
-        description: `Failed to create mission: ${error instanceof Error ? error.message : "Unknown error"}`,
-        variant: "destructive",
-      })
-    }
+    })
   }
 
   const handleUpdateMission = async (formData: FormData) => {
-    try {
-      if (editMissionSchema !== undefined) {
-        formData.set("submission_schema", editMissionSchema ? JSON.stringify(editMissionSchema) : "")
+    startUpdateTransition(async () => {
+      try {
+        if (editMissionSchema !== undefined) {
+          formData.set("submission_schema", editMissionSchema ? JSON.stringify(editMissionSchema) : "")
+        }
+        await updateMission(formData)
+        console.log("[v0] Mission updated successfully")
+        setIsEditDialogOpen(false)
+        setEditingMission(null)
+        setEditMissionSchema(null)
+        await fetchMissions()
+        toast({
+          title: "Mission Updated",
+          description: "The mission has been updated successfully.",
+        })
+      } catch (error) {
+        console.error("[v0] Failed to update mission:", error)
+        toast({
+          title: "Update Failed",
+          description: `Failed to update mission: ${error instanceof Error ? error.message : "Unknown error"}`,
+          variant: "destructive",
+        })
       }
-      await updateMission(formData)
-      console.log("[v0] Mission updated successfully")
-      setIsEditDialogOpen(false)
-      setEditingMission(null)
-      setEditMissionSchema(null)
-      await fetchMissions()
-      toast({
-        title: "Mission Updated",
-        description: "The mission has been updated successfully.",
-      })
-    } catch (error) {
-      console.error("Failed to update mission:", error)
-      toast({
-        title: "Update Failed",
-        description: `Failed to update mission: ${error instanceof Error ? error.message : "Unknown error"}`,
-        variant: "destructive",
-      })
-    }
+    })
   }
 
   const handleDeleteMission = async (formData: FormData) => {
@@ -611,7 +618,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen p-3 sm:p-4 relative overflow-hidden">
+    <div className="min-h-screen p-3 sm:p-4 relative overflow-hidden bg-gradient-to-br from-background via-background to-primary/5">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
         <div
@@ -956,9 +963,10 @@ export default function AdminPage() {
 
                       <Button
                         type="submit"
-                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300"
+                        disabled={isCreatingMission}
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                       >
-                        Create Mission
+                        {isCreatingMission ? "Creating..." : "Create Mission"}
                       </Button>
                     </form>
                   </DialogContent>
@@ -1257,9 +1265,10 @@ export default function AdminPage() {
 
                           <Button
                             type="submit"
-                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300"
+                            disabled={isUpdatingMission}
+                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                           >
-                            Update Mission
+                            {isUpdatingMission ? "Updating..." : "Update Mission"}
                           </Button>
                         </>
                       )}
@@ -1692,9 +1701,10 @@ export default function AdminPage() {
 
                                         <Button
                                           type="submit"
-                                          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300"
+                                          disabled={isUpdatingMission}
+                                          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                                         >
-                                          Update Mission
+                                          {isUpdatingMission ? "Updating..." : "Update Mission"}
                                         </Button>
                                       </>
                                     )}

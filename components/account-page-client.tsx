@@ -13,7 +13,7 @@ import Link from "next/link"
 import { Edit, CheckCircle, Eye, ExternalLink, History } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { updateProfile, updateAvatar } from "@/lib/actions"
-import { useState, useRef } from "react"
+import { useState, useRef, useTransition } from "react"
 
 interface AccountPageClientProps {
   initialData: {
@@ -33,49 +33,55 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null)
   const [showSubmissionModal, setShowSubmissionModal] = useState(false)
+  const [isProfilePending, startProfileTransition] = useTransition()
+  const [isAvatarPending, startAvatarTransition] = useTransition()
 
   const handleProfileUpdate = async (formData: FormData) => {
-    try {
-      await updateProfile(formData)
-      setShowSuccessModal(true)
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update profile. Please try again.",
-        variant: "destructive",
-      })
-    }
+    startProfileTransition(async () => {
+      try {
+        await updateProfile(formData)
+        setShowSuccessModal(true)
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update profile. Please try again.",
+          variant: "destructive",
+        })
+      }
+    })
   }
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
-    try {
-      const formData = new FormData()
-      formData.append("avatar", file)
+    startAvatarTransition(async () => {
+      try {
+        const formData = new FormData()
+        formData.append("avatar", file)
 
-      await updateAvatar(formData)
+        await updateAvatar(formData)
 
-      const supabase = createClient()
-      const { data: updatedProfile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", initialData.user.id)
-        .single()
-      setProfile(updatedProfile)
+        const supabase = createClient()
+        const { data: updatedProfile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", initialData.user.id)
+          .single()
+        setProfile(updatedProfile)
 
-      toast({
-        title: "Success",
-        description: "Your profile picture was updated successfully.",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update profile picture. Please try again.",
-        variant: "destructive",
-      })
-    }
+        toast({
+          title: "Success",
+          description: "Your profile picture was updated successfully.",
+        })
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update profile picture. Please try again.",
+          variant: "destructive",
+        })
+      }
+    })
   }
 
   const handleSubmissionClick = (submission: any) => {
@@ -108,9 +114,10 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
               </Avatar>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-2 -right-2 sm:-bottom-1 sm:-right-1 p-1 sm:p-1.5 hover:bg-primary/90 text-primary-foreground rounded-full shadow-lg hover:scale-110 transition-all duration-300 px-3.5 py-0 my-0 mx-12 bg-border"
+                disabled={isAvatarPending}
+                className="absolute -bottom-2 -right-2 sm:-bottom-1 sm:-right-1 p-1 sm:p-1.5 hover:bg-primary/90 text-primary-foreground rounded-full shadow-lg hover:scale-110 transition-all duration-300 px-3.5 py-0 my-0 mx-12 bg-border disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                <Edit className={`h-3 w-3 sm:h-4 sm:w-4 ${isAvatarPending ? "animate-pulse" : ""}`} />
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
             </div>
@@ -234,9 +241,10 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
 
             <Button
               type="submit"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 h-11 sm:h-10"
+              disabled={isProfilePending}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 h-11 sm:h-10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              Update Profile
+              {isProfilePending ? "Updating..." : "Update Profile"}
             </Button>
           </form>
         </CardContent>
