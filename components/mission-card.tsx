@@ -3,12 +3,18 @@
 import { CardContent as UICardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Clock, Users, Gauge, Calendar } from "lucide-react"
+import { ArrowRight, Clock, Users, Gauge, Calendar, CheckCircle, FileText, XCircle } from "lucide-react"
 import Link from "next/link"
 import { lazy, Suspense } from "react"
 import Image from "next/image"
 
 const Tilt = lazy(() => import("react-parallax-tilt"))
+
+interface UserSubmission {
+  id: string
+  status: "draft" | "pending" | "approved" | "rejected"
+  created_at: string
+}
 
 interface Mission {
   id: string
@@ -22,6 +28,7 @@ interface Mission {
   support_status?: string
   due_date?: string
   mission_number?: number
+  userSubmissions?: UserSubmission[]
 }
 
 interface MissionCardProps {
@@ -100,6 +107,74 @@ export function MissionCard({ mission }: MissionCardProps) {
     const quarter = Math.ceil((date.getMonth() + 1) / 3)
     return `Due by end of Q${quarter} ${year}`
   }
+
+  const getButtonState = () => {
+    if (!mission.userSubmissions || mission.userSubmissions.length === 0) {
+      return {
+        text: "Start Activity",
+        icon: <ArrowRight className="h-4 w-4 ml-2" aria-hidden="true" />,
+        className: "bg-[#005956] hover:bg-[#004744] text-white",
+      }
+    }
+
+    // Check for different submission statuses
+    const hasDraft = mission.userSubmissions.some((s) => s.status === "draft")
+    const hasPending = mission.userSubmissions.some((s) => s.status === "pending")
+    const hasRejected = mission.userSubmissions.some((s) => s.status === "rejected")
+    const approvedCount = mission.userSubmissions.filter((s) => s.status === "approved").length
+    const totalCount = mission.userSubmissions.length
+
+    // Priority: Rejected > Pending > Approved > Draft
+    if (hasRejected) {
+      return {
+        text: "Rejected",
+        icon: <XCircle className="h-4 w-4 ml-2" aria-hidden="true" />,
+        className: "bg-red-50 hover:bg-red-100 text-red-600 border border-red-200",
+      }
+    }
+
+    if (hasPending) {
+      return {
+        text: "Pending",
+        icon: <Clock className="h-4 w-4 ml-2" aria-hidden="true" />,
+        className: "bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-200",
+      }
+    }
+
+    if (approvedCount > 0) {
+      // If there are multiple submissions and some are approved
+      if (totalCount > approvedCount) {
+        return {
+          text: `Approved (${approvedCount} of ${totalCount})`,
+          icon: <CheckCircle className="h-4 w-4 ml-2" aria-hidden="true" />,
+          className: "bg-green-50 hover:bg-green-100 text-green-600 border border-green-200",
+        }
+      }
+      // All submissions are approved
+      return {
+        text: "Approved",
+        icon: <CheckCircle className="h-4 w-4 ml-2" aria-hidden="true" />,
+        className: "bg-green-500 hover:bg-green-600 text-white",
+      }
+    }
+
+    if (hasDraft) {
+      return {
+        text: "Draft",
+        icon: <FileText className="h-4 w-4 ml-2" aria-hidden="true" />,
+        className: "bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200",
+      }
+    }
+
+    // Default fallback
+    return {
+      text: "Start Activity",
+      icon: <ArrowRight className="h-4 w-4 ml-2" aria-hidden="true" />,
+      className: "bg-[#005956] hover:bg-[#004744] text-white",
+    }
+  }
+
+  const buttonState = getButtonState()
 
   const CardContent = () => (
     <UICardContent className="h-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer relative overflow-hidden group-hover:shadow-2xl min-h-[400px] touch-manipulation will-change-transform">
@@ -192,9 +267,11 @@ export function MissionCard({ mission }: MissionCardProps) {
       </div>
 
       <CardFooter className="px-4 pb-4 mt-auto">
-        <Button className="w-full bg-[#005956] hover:bg-[#004744] text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
-          Start Activity
-          <ArrowRight className="h-4 w-4 ml-2" aria-hidden="true" />
+        <Button
+          className={`w-full font-medium py-2 px-4 rounded-lg transition-colors duration-200 ${buttonState.className}`}
+        >
+          {buttonState.text}
+          {buttonState.icon}
         </Button>
       </CardFooter>
     </UICardContent>

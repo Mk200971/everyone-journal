@@ -92,6 +92,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
   const [selectedType, setSelectedType] = useState("All")
   const [selectedResourceType, setSelectedResourceType] = useState("All Resources")
   const [isHydrated, setIsHydrated] = useState(false)
+  const [userSubmissions, setUserSubmissions] = useState<Record<string, any[]>>({})
 
   useEffect(() => {
     setIsHydrated(true)
@@ -154,6 +155,34 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
       }
     }
 
+    const fetchUserSubmissions = async () => {
+      if (!mounted) return
+      try {
+        const { data, error } = await supabase
+          .from("submissions")
+          .select("id, mission_id, status, created_at")
+          .eq("user_id", initialData.user.id)
+
+        if (mounted && !error && data) {
+          const submissionsByMission = data.reduce(
+            (acc, submission) => {
+              if (!acc[submission.mission_id]) {
+                acc[submission.mission_id] = []
+              }
+              acc[submission.mission_id].push(submission)
+              return acc
+            },
+            {} as Record<string, any[]>,
+          )
+          setUserSubmissions(submissionsByMission)
+        }
+      } catch (error) {
+        console.error("Error fetching user submissions:", error)
+      }
+    }
+
+    fetchUserSubmissions()
+
     const submissionsChannel = supabase
       .channel("public:submissions")
       .on(
@@ -164,7 +193,10 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
           table: "submissions",
         },
         () => {
-          if (mounted) fetchRecentActivity()
+          if (mounted) {
+            fetchRecentActivity()
+            fetchUserSubmissions()
+          }
         },
       )
       .subscribe()
@@ -224,7 +256,6 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
       All: missions.length,
     }
 
-    // Extract unique mission types from the missions data
     missions.forEach((mission) => {
       if (mission.type) {
         const type = mission.type.charAt(0).toUpperCase() + mission.type.slice(1)
@@ -294,10 +325,16 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
     }
   }, [])
 
+  const missionsWithSubmissions = useMemo(() => {
+    return filteredMissions.map((mission) => ({
+      ...mission,
+      userSubmissions: userSubmissions[mission.id] || [],
+    }))
+  }, [filteredMissions, userSubmissions])
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8 sm:mb-10">
-        {/* Recent Community Activity */}
         {recentActivity.length > 0 && (
           <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10">
             <CardHeader className="p-4 sm:p-6">
@@ -321,11 +358,13 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0">
               <div className="space-y-3" role="list" aria-label="Recent community activities">
-                {recentActivity.slice(0, 3).map((activity) => (
+                {recentActivity.slice(0, 5).map((activity, index) => (
                   <div
                     key={activity.id}
                     role="listitem"
-                    className="flex items-center gap-3 p-3 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors"
+                    className={`flex items-center gap-3 p-3 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors ${
+                      index >= 3 ? "hidden lg:flex" : ""
+                    }`}
                   >
                     {activity.user_id ? (
                       <Link href={`/user/${activity.user_id}`} aria-label={`View ${activity.user_name}'s profile`}>
@@ -554,7 +593,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         role="list"
         aria-label="Available missions"
       >
-        {filteredMissions.map((mission, index) => (
+        {missionsWithSubmissions.map((mission, index) => (
           <div
             key={mission.id}
             role="listitem"
@@ -664,7 +703,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         </section>
       )}
 
-      {filteredMissions.length === 0 && (
+      {missionsWithSubmissions.length === 0 && (
         <div className="text-center py-12 sm:py-16 px-4" role="status" aria-live="polite">
           <div className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-xl p-8 sm:p-12 max-w-md mx-auto">
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-muted/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
