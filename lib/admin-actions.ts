@@ -142,7 +142,10 @@ export async function fetchAllQuotes() {
   const supabase = createAdminClient()
 
   try {
-    const { data, error } = await supabase.from("quotes").select("*").order("created_at", { ascending: false })
+    const { data, error } = await supabase
+      .from("noticeboard_items")
+      .select("*")
+      .order("created_at", { ascending: false })
 
     if (error) throw error
 
