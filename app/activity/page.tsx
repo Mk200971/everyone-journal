@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache"
 import { Navbar } from "@/components/navbar"
 import { LikeButton } from "@/components/like-button"
 import { ImageViewer } from "@/components/image-viewer"
+import { getAvatarColor } from "@/lib/utils"
 
 interface ActivityItem {
   id: string
@@ -594,14 +595,26 @@ function ActivityFeed({ activities }: { activities: ActivityItem[] }) {
               {activity.user_id ? (
                 <Link href={`/user/${activity.user_id}`}>
                   <Avatar className="h-10 w-10 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                    <AvatarImage src={activity.user_avatar || "/placeholder.svg"} />
-                    <AvatarFallback>{activity.user_name.charAt(0).toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={activity.user_avatar || undefined} />
+                    <AvatarFallback className={getAvatarColor(activity.user_id, activity.user_name)}>
+                      {activity.user_name
+                        ?.split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase() || "U"}
+                    </AvatarFallback>
                   </Avatar>
                 </Link>
               ) : (
                 <Avatar className="h-10 w-10 flex-shrink-0">
-                  <AvatarImage src={activity.user_avatar || "/placeholder.svg"} />
-                  <AvatarFallback>{activity.user_name.charAt(0).toUpperCase()}</AvatarFallback>
+                  <AvatarImage src={activity.user_avatar || undefined} />
+                  <AvatarFallback className={getAvatarColor(undefined, activity.user_name)}>
+                    {activity.user_name
+                      ?.split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .toUpperCase() || "U"}
+                  </AvatarFallback>
                 </Avatar>
               )}
 

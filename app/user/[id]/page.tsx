@@ -8,6 +8,7 @@ import { Trophy, MapPin, Briefcase, Calendar, ArrowLeft, Users, Target, Globe } 
 import Link from "next/link"
 import { Navbar } from "@/components/navbar"
 import { notFound } from "next/navigation"
+import { getAvatarColor } from "@/lib/utils"
 
 interface UserProfile {
   id: string
@@ -175,8 +176,10 @@ export default async function UserProfilePage({ params }: { params: { id: string
               <CardContent className="p-6">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
                   <Avatar className="h-24 w-24 flex-shrink-0">
-                    <AvatarImage src={profile.avatar_url || "/placeholder.svg"} />
-                    <AvatarFallback className="text-2xl">{profile.name.charAt(0).toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={profile.avatar_url || undefined} />
+                    <AvatarFallback className={`text-2xl ${getAvatarColor(profile.id, profile.name)}`}>
+                      {profile.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
 
                   <div className="flex-1 min-w-0">
@@ -218,7 +221,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
                     {profile.customer_obsession && (
                       <div className="mb-4 p-4 bg-muted/50 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
-                          <Target className="h-4 w-4 text-primary" />
+                          <Target className="h-4 w-4 text-primary mx-auto mb-2" />
                           <h3 className="font-medium text-sm">Customer Obsession Belief</h3>
                         </div>
                         <div className="flex items-center gap-3">

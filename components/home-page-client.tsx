@@ -21,6 +21,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { fetchAllCommunityActivity } from "@/lib/actions"
+import { getAvatarColor } from "@/lib/utils"
 
 interface Mission {
   id: string
@@ -369,8 +370,8 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                     {activity.user_id ? (
                       <Link href={`/user/${activity.user_id}`} aria-label={`View ${activity.user_name}'s profile`}>
                         <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                          <AvatarImage src={activity.user_avatar_url || "/placeholder.svg"} alt={activity.user_name} />
-                          <AvatarFallback className="bg-primary/20 text-primary text-xs sm:text-sm">
+                          <AvatarImage src={activity.user_avatar_url || undefined} alt={activity.user_name} />
+                          <AvatarFallback className={getAvatarColor(activity.user_id, activity.user_name)}>
                             {activity.user_name
                               ?.split(" ")
                               .map((n) => n[0])
@@ -380,8 +381,8 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                       </Link>
                     ) : (
                       <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
-                        <AvatarImage src={activity.user_avatar_url || "/placeholder.svg"} alt={activity.user_name} />
-                        <AvatarFallback className="bg-primary/20 text-primary text-xs sm:text-sm">
+                        <AvatarImage src={activity.user_avatar_url || undefined} alt={activity.user_name} />
+                        <AvatarFallback className={getAvatarColor(undefined, activity.user_name)}>
                           {activity.user_name
                             ?.split(" ")
                             .map((n) => n[0])
@@ -499,8 +500,8 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                       <div className="flex flex-col items-center gap-2 flex-shrink-0">
                         <Link href={`/user/${user.id}`} aria-label={`View ${user.name}'s profile`}>
                           <Avatar className="w-12 h-12 sm:w-14 sm:h-14 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                            <AvatarImage src={user.avatar_url || "/placeholder.svg"} alt={user.name} />
-                            <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
+                            <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
+                            <AvatarFallback className={getAvatarColor(user.id, user.name)}>
                               {user.name
                                 ?.split(" ")
                                 .map((n) => n[0])

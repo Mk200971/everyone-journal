@@ -9,6 +9,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect } from "react"
+import { getAvatarColor } from "@/lib/utils"
 
 interface Submission {
   id: string
@@ -244,8 +245,8 @@ export function DiscoverClient({ initialData }: DiscoverClientProps) {
                 <div className="flex items-start gap-3">
                   <Link href={`/user/${submission.user_id}`}>
                     <Avatar className="w-10 h-10 sm:w-12 sm:h-12 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                      <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={profile?.name || "User"} />
-                      <AvatarFallback className="bg-primary/20 text-primary text-sm">
+                      <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.name || "User"} />
+                      <AvatarFallback className={getAvatarColor(submission.user_id, profile?.name || "User")}>
                         {profile?.name
                           ?.split(" ")
                           .map((n) => n[0])

@@ -14,6 +14,7 @@ import { Edit, CheckCircle, Eye, ExternalLink, History } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { updateProfile, updateAvatar } from "@/lib/actions"
 import { useState, useRef, useTransition } from "react"
+import { getAvatarColor } from "@/lib/utils"
 
 interface AccountPageClientProps {
   initialData: {
@@ -104,8 +105,10 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
           <div className="flex justify-center mb-3 sm:mb-4">
             <div className="relative">
               <Avatar className="w-16 h-16 sm:w-24 sm:h-24 ring-4 ring-white/20 dark:ring-white/10">
-                <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={profile?.name || "User"} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-lg sm:text-2xl">
+                <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.name || "User"} />
+                <AvatarFallback
+                  className={`bg-primary text-primary-foreground text-lg sm:text-2xl ${getAvatarColor(initialData.user.id, profile?.name || "User")}`}
+                >
                   {profile?.name
                     ?.split(" ")
                     .map((n) => n[0])
@@ -288,7 +291,7 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0">
-            <div className="rounded-lg border border-white/20 dark:border-white/10 overflow-hidden">
+            <div className="hidden sm:block rounded-lg border border-white/20 dark:border-white/10 overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="border-white/20 dark:border-white/10 hover:bg-white/5 dark:hover:bg-black/10">
@@ -349,6 +352,55 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+
+            <div className="sm:hidden space-y-3">
+              {initialData.submissionHistoryWithTitles.map((submission) => (
+                <div
+                  key={submission.id}
+                  onClick={() => handleSubmissionClick(submission)}
+                  className="bg-white/5 dark:bg-black/10 rounded-lg p-4 border border-white/20 dark:border-white/10 hover:bg-white/10 dark:hover:bg-black/20 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <h4 className="text-foreground font-medium text-sm flex-1">{submission.missions.title}</h4>
+                    {submission.status === "approved" ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/20 text-primary whitespace-nowrap">
+                        +{submission.points_awarded}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 whitespace-nowrap">
+                        {submission.status === "pending" ? "Pending" : submission.status}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">{formatDate(submission.created_at)}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleSubmissionClick(submission)
+                        }}
+                        className="h-8 w-8 p-0 hover:bg-white/10 dark:hover:bg-black/20"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Link href={`/mission/${submission.mission_id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-8 w-8 p-0 hover:bg-white/10 dark:hover:bg-black/20"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
