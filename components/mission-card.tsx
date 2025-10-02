@@ -29,6 +29,14 @@ interface MissionCardProps {
 }
 
 export function MissionCard({ mission }: MissionCardProps) {
+  if (!mission || !mission.id) {
+    return (
+      <div className="h-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 min-h-[400px] flex items-center justify-center">
+        <p className="text-gray-500 dark:text-gray-400">Loading mission...</p>
+      </div>
+    )
+  }
+
   const getTypeConfig = (type: string) => {
     const normalizedType = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase()
 

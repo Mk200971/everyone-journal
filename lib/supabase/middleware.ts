@@ -25,11 +25,13 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  // IMPORTANT: Do not run code between createServerClient and supabase.auth.getUser()
-  // A simple mistake could make it very hard to debug issues with users being randomly logged out
+  // IMPORTANT: Do not run code between createServerClient and supabase.auth.getSession()
+  // getSession() proactively refreshes expired tokens, preventing random logouts
   const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  const user = session?.user
 
   const protectedRoutes = ["/account", "/mission", "/leaderboard", "/admin"]
   const authRoutes = ["/auth/login", "/auth/sign-up"]
