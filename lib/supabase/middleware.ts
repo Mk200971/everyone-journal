@@ -2,9 +2,7 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+  let supabaseResponse = NextResponse.next({ request })
 
   try {
     const supabase = createServerClient(
@@ -17,30 +15,32 @@ export async function updateSession(request: NextRequest) {
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-            supabaseResponse = NextResponse.next({
-              request,
-            })
+
+            supabaseResponse = NextResponse.next({ request })
+
             cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
           },
         },
       },
     )
 
-    // IMPORTANT: Do not run code between createServerClient and supabase.auth.getSession()
-    // getSession() proactively refreshes expired tokens, preventing random logouts
     const {
       data: { session },
+      error: sessionError,
     } = await supabase.auth.getSession()
 
-    const user = session?.user
+    if (sessionError) {
+      console.error("[Middleware] Session error:", sessionError.message)
+    }
 
+    const user = session?.user
     const protectedRoutes = ["/account", "/mission", "/leaderboard", "/admin"]
     const authRoutes = ["/auth/login", "/auth/sign-up"]
 
     const isProtectedRoute = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
     const isAuthRoute = authRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
 
-    if (!user && isProtectedRoute) {
+    if (!user && isProtectedRoute && !sessionError) {
       const redirectUrl = new URL("/auth/login", request.url)
       redirectUrl.searchParams.set("redirectTo", request.nextUrl.pathname)
       return NextResponse.redirect(redirectUrl)
@@ -50,12 +50,9 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(new URL("/", request.url))
     }
 
-    // IMPORTANT: You *must* return the supabaseResponse object as it is
-    // If you're creating a new response object, make sure to copy over the cookies
     return supabaseResponse
   } catch (error) {
-    console.error("[v0] Middleware error:", error)
-    // Return the response even if there's an error to prevent crashes
+    console.error("[Middleware] Critical error:", error)
     return supabaseResponse
   }
 }

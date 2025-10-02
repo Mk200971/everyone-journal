@@ -1,44 +1,52 @@
 import { createBrowserClient } from "@supabase/ssr"
 
-let client: ReturnType<typeof createBrowserClient> | null = null
+let clientInstance: ReturnType<typeof createBrowserClient> | null = null
 
 export function createClient() {
-  if (client) {
-    return client
+  if (clientInstance) {
+    return clientInstance
   }
 
-  client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: true,
-      detectSessionInUrl: true,
-      flowType: "pkce",
-    },
-    global: {
-      fetch: async (url, options = {}) => {
-        try {
-          return await fetch(url, options)
-        } catch (error) {
-          console.error("[v0] Supabase fetch error:", error)
-          return new Response(JSON.stringify({ error: "Network error" }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          })
-        }
+  clientInstance = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        autoRefreshToken: typeof window !== "undefined",
+        persistSession: true,
+        detectSessionInUrl: typeof window !== "undefined",
+        flowType: "pkce",
+        storageKey: "sb-auth-token",
+      },
+      global: {
+        fetch: async (url, options = {}) => {
+          try {
+            const response = await fetch(url, options)
+
+            if (!response.ok && response.status === 401) {
+              console.warn("[Client] Session expired, middleware will refresh")
+            }
+
+            return response
+          } catch (error) {
+            console.error("[Client] Fetch error:", error)
+            return new Response(
+              JSON.stringify({
+                error: "Network error",
+                message: error instanceof Error ? error.message : "Unknown",
+              }),
+              {
+                status: 500,
+                headers: { "Content-Type": "application/json" },
+              },
+            )
+          }
+        },
       },
     },
-  })
+  )
 
-  if (typeof window !== "undefined") {
-    setTimeout(() => {
-      if (client) {
-        // Re-enable token refresh after hydration completes
-        client.auth.startAutoRefresh()
-      }
-    }, 1000)
-  }
-
-  return client
+  return clientInstance
 }
 
 export function getPublicImageUrl(bucket: string, path: string) {

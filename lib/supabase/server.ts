@@ -10,16 +10,21 @@ export async function createClient() {
         return cookieStore.getAll()
       },
       setAll(cookiesToSet) {
-        // Let middleware handle token refresh instead
-        cookiesToSet.forEach(({ name, value, options }) => {
-          try {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
             cookieStore.set(name, value, options)
-          } catch (error) {
-            // Only log errors, don't silently fail
-            console.error("[v0] Failed to set cookie:", name, error)
+          })
+        } catch (error) {
+          if (process.env.NODE_ENV === "development") {
+            console.log("[Server] Cookie setting deferred to middleware")
           }
-        })
+        }
       },
+    },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
     },
   })
 }
