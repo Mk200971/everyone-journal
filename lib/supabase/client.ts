@@ -1,25 +1,25 @@
 import { createBrowserClient } from "@supabase/ssr"
 
+let client: ReturnType<typeof createBrowserClient> | null = null
+
 export function createClient() {
-  return createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+  if (client) {
+    return client
+  }
+
+  client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     auth: {
-      // Don't automatically refresh tokens to avoid fetch errors
-      autoRefreshToken: true,
-      // Persist session in storage
+      autoRefreshToken: false,
       persistSession: true,
-      // Detect session from URL
       detectSessionInUrl: true,
-      // Add custom fetch with error handling
       flowType: "pkce",
     },
     global: {
-      // Add custom fetch that handles errors gracefully
       fetch: async (url, options = {}) => {
         try {
           return await fetch(url, options)
         } catch (error) {
           console.error("[v0] Supabase fetch error:", error)
-          // Return a mock response to prevent crashes
           return new Response(JSON.stringify({ error: "Network error" }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -28,6 +28,17 @@ export function createClient() {
       },
     },
   })
+
+  if (typeof window !== "undefined") {
+    setTimeout(() => {
+      if (client) {
+        // Re-enable token refresh after hydration completes
+        client.auth.startAutoRefresh()
+      }
+    }, 1000)
+  }
+
+  return client
 }
 
 export function getPublicImageUrl(bucket: string, path: string) {

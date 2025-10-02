@@ -91,9 +91,14 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
   const [topUsers, setTopUsers] = useState<LeaderboardEntry[]>(initialData.topUsers)
   const [selectedType, setSelectedType] = useState("All")
   const [selectedResourceType, setSelectedResourceType] = useState("All Resources")
+  const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
-    if (!initialData.user) return
+    setIsHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!initialData.user || !isHydrated) return
 
     const supabase = createClient()
     let mounted = true
@@ -187,7 +192,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
       submissionsChannel.unsubscribe()
       profilesChannel.unsubscribe()
     }
-  }, [initialData.user])
+  }, [initialData.user, isHydrated])
 
   const filteredMissions = useMemo(
     () =>
