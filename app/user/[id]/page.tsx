@@ -75,7 +75,6 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
     .from("submissions")
     .select("id, points_awarded, created_at, status, mission_id")
     .eq("user_id", userId)
-    .eq("status", "approved")
     .order("created_at", { ascending: false })
 
   console.log("[v0] User submissions:", submissions?.length || 0)
@@ -278,7 +277,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="h-5 w-5" />
-                  Activities Submitted
+                  Activities by {profile.name}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -298,10 +297,32 @@ export default async function UserProfilePage({ params }: { params: { id: string
                             {formatDate(submission.created_at)}
                           </p>
                         </div>
-                        <Badge variant="secondary">
-                          {submission.status === "approved" ? "+" : ""}
-                          {submission.points_awarded} EP
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {submission.status === "approved" && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                              Approved
+                            </Badge>
+                          )}
+                          {submission.status === "pending" && (
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                              Pending
+                            </Badge>
+                          )}
+                          {submission.status === "rejected" && (
+                            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+                              Rejected
+                            </Badge>
+                          )}
+                          {submission.status === "draft" && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                              Draft
+                            </Badge>
+                          )}
+                          <Badge variant="secondary">
+                            {submission.status === "approved" ? "+" : ""}
+                            {submission.points_awarded} EP
+                          </Badge>
+                        </div>
                       </div>
                     ))}
                   </div>

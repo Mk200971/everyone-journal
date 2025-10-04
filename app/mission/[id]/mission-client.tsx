@@ -666,7 +666,7 @@ export function MissionClient({
             )}
 
             {mission.tips_inspiration && (
-              <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 backdrop-blur-lg rounded-lg p-4 sm:p-6 border border-white/20 dark:border-white/10">
+              <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 backdrop-blur-lg rounded-lg p-4 sm:p-6 border border-white/20 dark:border-white/10 mb-4 sm:mb-6">
                 <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-2 sm:mb-3 flex items-center gap-2">
                   <span className="text-amber-500">💡</span>
                   Tips & Inspiration

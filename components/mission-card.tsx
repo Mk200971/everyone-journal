@@ -154,7 +154,7 @@ export function MissionCard({ mission }: MissionCardProps) {
       return {
         text: "Approved",
         icon: <CheckCircle className="h-4 w-4 ml-2" aria-hidden="true" />,
-        className: "bg-green-500 hover:bg-green-600 text-white",
+        className: "bg-[#CCF3E0] hover:bg-[#B3E6D0] text-[#047857] border border-[#B3E6D0]",
       }
     }
 

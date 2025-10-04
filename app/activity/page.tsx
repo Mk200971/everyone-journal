@@ -20,6 +20,9 @@ interface ActivityItem {
   user_avatar?: string
   user_id?: string // Added user_id to enable profile linking
   mission_title?: string
+  mission_type?: string
+  mission_number?: number
+  mission_points_value?: number
   points?: number
   created_at: string
   mission_id?: string
@@ -105,7 +108,10 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
   const { data: profiles } = await supabase.from("profiles").select("id, name, avatar_url").in("id", userIds)
 
   const missionIds = [...new Set(submissions.map((s) => s.mission_id))]
-  const { data: missions } = await supabase.from("missions").select("id, title, submission_schema").in("id", missionIds)
+  const { data: missions } = await supabase
+    .from("missions")
+    .select("id, title, submission_schema, type, mission_number, points_value")
+    .in("id", missionIds)
 
   const profilesMap = new Map(profiles?.map((p) => [p.id, p]) || [])
   const missionsMap = new Map(missions?.map((m) => [m.id, m]) || [])
@@ -176,6 +182,9 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         user_avatar: profile.avatar_url,
         user_id: submission.user_id, // Include user_id for profile linking
         mission_title: mission.title,
+        mission_type: mission.type,
+        mission_number: mission.mission_number,
+        mission_points_value: mission.points_value,
         points: submission.points_awarded,
         created_at: submission.created_at,
         mission_id: mission.id,
@@ -196,6 +205,9 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         user_avatar: profile.avatar_url,
         user_id: submission.user_id, // Include user_id for profile linking
         mission_title: mission.title,
+        mission_type: mission.type,
+        mission_number: mission.mission_number,
+        mission_points_value: mission.points_value,
         created_at: submission.created_at,
         mission_id: mission.id,
         submission_id: submission.id,
@@ -357,25 +369,59 @@ async function toggleLike(submissionId: string, userHasLiked: boolean) {
 }
 
 function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissionSchema: any }) {
-  if (!answers || !submissionSchema || !submissionSchema.questions) {
+  if (!answers || typeof answers !== "object" || Object.keys(answers).length === 0) {
     return null
   }
 
-  const questions = submissionSchema.questions
+  const answerKeys = Object.keys(answers)
 
   return (
-    <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2">
-      {questions.map((question: any, index: number) => {
-        const answer = answers[question.id] || answers[`question_${index}`] || answers[question.label]
+    <div className="space-y-3">
+      {answerKeys.map((key, index) => {
+        const answer = answers[key]
 
-        if (!answer) return null
+        if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
+
+        let questionTypeLabel = "Response"
+        if (key.toLowerCase().includes("pop quiz")) {
+          questionTypeLabel = "Pop Quiz Question"
+        } else if (key.toLowerCase().includes("reflection")) {
+          questionTypeLabel = "Article Reflection"
+        } else if (key.toLowerCase().includes("summary")) {
+          questionTypeLabel = "Activity Summary"
+        } else if (key.toLowerCase().includes("takeaway")) {
+          questionTypeLabel = "Key Takeaways"
+        } else if (key.toLowerCase().includes("pledge")) {
+          questionTypeLabel = "Pledge"
+        } else if (key.toLowerCase().includes("note")) {
+          questionTypeLabel = "Notes"
+        } else if (key.toLowerCase().includes("call")) {
+          questionTypeLabel = "Call Notes"
+        } else if (key.toLowerCase().includes("question")) {
+          questionTypeLabel = "Question"
+        }
+
+        const numberMatch = key.match(/(\d+)\/(\d+)/)
+        const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
 
         return (
-          <div key={question.id || index} className="border-b border-muted/30 last:border-b-0 pb-2 last:pb-0">
-            <p className="font-medium text-muted-foreground text-xs mb-1">
-              {question.label || question.question || `Question ${index + 1}`}
-            </p>
-            <p className="text-foreground">{typeof answer === "string" ? answer : JSON.stringify(answer)}</p>
+          <div key={key} className="bg-muted/30 rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-primary">
+                {questionTypeLabel} {questionNumber}
+              </span>
+            </div>
+
+            <p className="text-sm font-medium text-foreground">{key}</p>
+
+            <div className="bg-background/50 rounded-md p-2 border border-muted/50">
+              <p className="text-xs text-muted-foreground mb-1">
+                {questionTypeLabel.includes("Quiz") ? "Selected:" : "Response:"}
+              </p>
+              <p className="text-sm text-foreground whitespace-pre-wrap">
+                {typeof answer === "string" ? answer : JSON.stringify(answer, null, 2)}
+              </p>
+            </div>
           </div>
         )
       })}
@@ -473,10 +519,24 @@ function ActivityDescription({ activity }: { activity: ActivityItem }) {
             {activity.type === "mission_completed" ? "completed" : "submitted"}{" "}
             {activity.mission_id ? (
               <Link href={`/mission/${activity.mission_id}`} className="text-primary hover:underline font-medium">
+                {activity.mission_type && activity.mission_number && (
+                  <>
+                    {activity.mission_type} #{Math.floor(activity.mission_number)} |{" "}
+                  </>
+                )}
                 {activity.mission_title}
+                {activity.mission_points_value && <> | +{activity.mission_points_value} EP</>}
               </Link>
             ) : (
-              <span className="font-medium">{activity.mission_title}</span>
+              <span className="font-medium text-primary">
+                {activity.mission_type && activity.mission_number && (
+                  <>
+                    {activity.mission_type} #{Math.floor(activity.mission_number)} |{" "}
+                  </>
+                )}
+                {activity.mission_title}
+                {activity.mission_points_value && <> | +{activity.mission_points_value} EP</>}
+              </span>
             )}
           </p>
 
