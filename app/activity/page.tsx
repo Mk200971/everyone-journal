@@ -369,50 +369,95 @@ async function toggleLike(submissionId: string, userHasLiked: boolean) {
 }
 
 function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissionSchema: any }) {
+  console.log("[v0] AnswersDisplay - Schema:", JSON.stringify(submissionSchema, null, 2))
+  console.log("[v0] AnswersDisplay - Answers:", JSON.stringify(answers, null, 2))
+
   if (!answers || typeof answers !== "object" || Object.keys(answers).length === 0) {
+    console.log("[v0] AnswersDisplay - No answers to display")
     return null
   }
 
-  const answerKeys = Object.keys(answers)
+  const schemaQuestions = submissionSchema?.questions || submissionSchema?.fields || []
+  console.log("[v0] AnswersDisplay - Schema questions:", JSON.stringify(schemaQuestions, null, 2))
+
+  if (!schemaQuestions || schemaQuestions.length === 0) {
+    console.log("[v0] AnswersDisplay - No schema questions found, falling back to answer keys")
+    // Fallback to old behavior if no schema
+    const answerKeys = Object.keys(answers)
+    return (
+      <div className="space-y-3">
+        {answerKeys.map((key) => {
+          const answer = answers[key]
+          if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
+
+          let questionTypeLabel = "Response"
+          if (key.toLowerCase().includes("pop quiz")) {
+            questionTypeLabel = "Pop Quiz Question"
+          } else if (key.toLowerCase().includes("reflection")) {
+            questionTypeLabel = "Article Reflection"
+          }
+
+          const numberMatch = key.match(/(\d+)\/(\d+)/)
+          const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
+
+          return (
+            <div key={key} className="bg-muted/30 rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-primary">
+                  {questionTypeLabel} {questionNumber}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-foreground">{key}</p>
+              <div className="bg-background/50 rounded-md p-2 border border-muted/50">
+                <p className="text-xs text-muted-foreground mb-1">
+                  {questionTypeLabel.includes("Quiz") ? "Selected:" : "Response:"}
+                </p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">
+                  {typeof answer === "string" ? answer : JSON.stringify(answer, null, 2)}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3">
-      {answerKeys.map((key, index) => {
-        const answer = answers[key]
+      {schemaQuestions.map((question: any, index: number) => {
+        const fieldName = question.field_name || question.name || question.label
+        const answer = answers[fieldName]
+
+        console.log("[v0] Processing question:", fieldName, "Answer:", answer)
 
         if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
 
+        // Determine question type label
         let questionTypeLabel = "Response"
-        if (key.toLowerCase().includes("pop quiz")) {
+        if (fieldName.toLowerCase().includes("pop quiz")) {
           questionTypeLabel = "Pop Quiz Question"
-        } else if (key.toLowerCase().includes("reflection")) {
+        } else if (fieldName.toLowerCase().includes("reflection")) {
           questionTypeLabel = "Article Reflection"
-        } else if (key.toLowerCase().includes("summary")) {
-          questionTypeLabel = "Activity Summary"
-        } else if (key.toLowerCase().includes("takeaway")) {
-          questionTypeLabel = "Key Takeaways"
-        } else if (key.toLowerCase().includes("pledge")) {
-          questionTypeLabel = "Pledge"
-        } else if (key.toLowerCase().includes("note")) {
-          questionTypeLabel = "Notes"
-        } else if (key.toLowerCase().includes("call")) {
-          questionTypeLabel = "Call Notes"
-        } else if (key.toLowerCase().includes("question")) {
-          questionTypeLabel = "Question"
+        } else if (fieldName.toLowerCase().includes("activity")) {
+          questionTypeLabel = "Activity Reflection"
         }
 
-        const numberMatch = key.match(/(\d+)\/(\d+)/)
+        const numberMatch = fieldName.match(/(\d+)\/(\d+)/)
         const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
 
+        // Get the actual question text from helper text
+        const questionText = question.helper_text || question.description || question.label || fieldName
+
         return (
-          <div key={key} className="bg-muted/30 rounded-lg p-3 space-y-2">
+          <div key={fieldName} className="bg-muted/30 rounded-lg p-3 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-primary">
                 {questionTypeLabel} {questionNumber}
               </span>
             </div>
 
-            <p className="text-sm font-medium text-foreground">{key}</p>
+            <p className="text-sm font-medium text-foreground">{questionText}</p>
 
             <div className="bg-background/50 rounded-md p-2 border border-muted/50">
               <p className="text-xs text-muted-foreground mb-1">

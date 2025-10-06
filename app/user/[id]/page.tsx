@@ -220,7 +220,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
                     {profile.customer_obsession && (
                       <div className="mb-4 p-4 bg-muted/50 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
-                          <Target className="h-4 w-4 text-primary mx-auto mb-2" />
+                          <Target className="h-4 w-4 text-primary" />
                           <h3 className="font-medium text-sm">Customer Obsession Belief</h3>
                         </div>
                         <div className="flex items-center gap-3">
