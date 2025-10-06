@@ -65,8 +65,6 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     data: { user },
   } = await supabase.auth.getUser()
 
-  console.log("[v0] Activity page - User authenticated:", !!user, user?.id)
-
   const { data: submissions, error: submissionsError } = await supabase
     .from("submissions")
     .select(`
@@ -83,16 +81,12 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     .order("created_at", { ascending: false })
     .limit(20)
 
-  console.log("[v0] Activity submissions fetched:", submissions?.length || 0, "Error:", submissionsError)
-
   const { data: profileActivities, error: profileActivitiesError } = await supabase
     .from("profile_activities")
     .select("id, created_at, user_id, changed_fields")
     .eq("activity_type", "profile_updated")
     .order("created_at", { ascending: false })
     .limit(10)
-
-  console.log("[v0] Profile activities fetched:", profileActivities?.length || 0, "Error:", profileActivitiesError)
 
   if (!submissions || submissions.length === 0) {
     return []
@@ -127,8 +121,6 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     `)
     .in("submission_id", submissionIds)
 
-  console.log("[v0] Likes data fetched:", likesData?.length || 0, "Error:", likesError)
-
   const likesCount =
     likesData?.reduce(
       (acc, like) => {
@@ -157,8 +149,6 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
   const userLikes = new Set(
     likesData?.filter((like) => like.user_id === user?.id).map((like) => like.submission_id) || [],
   )
-
-  console.log("[v0] User likes:", Array.from(userLikes))
 
   const { data: newUsers } = await supabase
     .from("profiles")
@@ -256,7 +246,6 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
   const finalActivities = activities
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 30)
-  console.log("[v0] Final activities count:", finalActivities.length)
 
   return finalActivities
 }
@@ -281,16 +270,13 @@ async function getCommunityStats() {
     },
   )
 
-  // Get total approved submissions (activities completed by community)
   const { count: totalCompletedActivities } = await supabase
     .from("submissions")
     .select("*", { count: "exact", head: true })
     .eq("status", "approved")
 
-  // Get total community members
   const { count: totalCommunityMembers } = await supabase.from("profiles").select("*", { count: "exact", head: true })
 
-  // Get combined EP earned by community
   const { data: profilesWithPoints } = await supabase.from("profiles").select("total_points")
 
   const totalCommunityPoints = profilesWithPoints?.reduce((sum, profile) => sum + (profile.total_points || 0), 0) || 0
@@ -343,46 +329,33 @@ async function toggleLike(submissionId: string, userHasLiked: boolean) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) {
-    console.log("[v0] No user found for like action")
     return { success: false, error: "User not authenticated" }
   }
-
-  console.log("[v0] Like action - User:", user.id, "Submission:", submissionId, "Currently liked:", userHasLiked)
 
   try {
     if (userHasLiked) {
       const { error } = await supabase.from("likes").delete().eq("user_id", user.id).eq("submission_id", submissionId)
-      console.log("[v0] Unlike result:", error ? "Error: " + error.message : "Success")
       if (error) throw error
     } else {
       const { error } = await supabase.from("likes").insert({ user_id: user.id, submission_id: submissionId })
-      console.log("[v0] Like result:", error ? "Error: " + error.message : "Success")
       if (error) throw error
     }
 
     revalidatePath("/activity")
     return { success: true }
   } catch (error) {
-    console.log("[v0] Like action error:", error)
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 
 function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissionSchema: any }) {
-  console.log("[v0] AnswersDisplay - Schema:", JSON.stringify(submissionSchema, null, 2))
-  console.log("[v0] AnswersDisplay - Answers:", JSON.stringify(answers, null, 2))
-
   if (!answers || typeof answers !== "object" || Object.keys(answers).length === 0) {
-    console.log("[v0] AnswersDisplay - No answers to display")
     return null
   }
 
   const schemaQuestions = submissionSchema?.questions || submissionSchema?.fields || []
-  console.log("[v0] AnswersDisplay - Schema questions:", JSON.stringify(schemaQuestions, null, 2))
 
   if (!schemaQuestions || schemaQuestions.length === 0) {
-    console.log("[v0] AnswersDisplay - No schema questions found, falling back to answer keys")
-    // Fallback to old behavior if no schema
     const answerKeys = Object.keys(answers)
     return (
       <div className="space-y-3">
@@ -429,11 +402,8 @@ function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissio
         const fieldName = question.field_name || question.name || question.label
         const answer = answers[fieldName]
 
-        console.log("[v0] Processing question:", fieldName, "Answer:", answer)
-
         if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
 
-        // Determine question type label
         let questionTypeLabel = "Response"
         if (fieldName.toLowerCase().includes("pop quiz")) {
           questionTypeLabel = "Pop Quiz Question"
@@ -446,8 +416,8 @@ function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissio
         const numberMatch = fieldName.match(/(\d+)\/(\d+)/)
         const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
 
-        // Get the actual question text from helper text
-        const questionText = question.helper_text || question.description || question.label || fieldName
+        const questionLabel = question.label || fieldName
+        const questionHelperText = question.helperText || question.helper_text || question.description
 
         return (
           <div key={fieldName} className="bg-muted/30 rounded-lg p-3 space-y-2">
@@ -457,7 +427,11 @@ function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissio
               </span>
             </div>
 
-            <p className="text-sm font-medium text-foreground">{questionText}</p>
+            <p className="text-sm font-medium text-foreground">{questionLabel}</p>
+
+            {questionHelperText && questionHelperText !== questionLabel && (
+              <p className="text-sm text-muted-foreground">{questionHelperText}</p>
+            )}
 
             <div className="bg-background/50 rounded-md p-2 border border-muted/50">
               <p className="text-xs text-muted-foreground mb-1">
