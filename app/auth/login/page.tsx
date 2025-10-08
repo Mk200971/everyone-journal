@@ -36,9 +36,9 @@ export default function Page() {
         throw error
       }
 
-      router.refresh()
       const redirectTo = searchParams.get("redirectTo") || "/"
       router.push(redirectTo)
+      router.refresh()
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
     } finally {
