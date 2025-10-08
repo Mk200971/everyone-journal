@@ -73,33 +73,27 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
 
   const { data: submissions, error: submissionsError } = await supabase
     .from("submissions")
-    .select("id, points_awarded, created_at, status, mission_id")
+    .select(`
+      id, 
+      points_awarded, 
+      created_at, 
+      status, 
+      mission_id,
+      missions!inner(id, title)
+    `)
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
 
   console.log("[v0] User submissions:", submissions?.length || 0)
   console.log("[v0] Submissions error:", submissionsError)
 
-  let missionsData: any[] = []
-  if (submissions && submissions.length > 0) {
-    const missionIds = submissions.map((s) => s.mission_id)
-    const { data: missions } = await supabase.from("missions").select("id, title").in("id", missionIds)
-
-    missionsData = missions || []
-    console.log("[v0] Fetched missions:", missionsData.length)
-  }
-
   const totalPoints = profile.total_points || 0
   const completedMissions = submissions?.length || 0
 
-  const { data: allUsers } = await supabase
-    .from("profiles")
-    .select("id, total_points")
-    .order("total_points", { ascending: false })
+  const { data: rankData } = await supabase.rpc("get_user_rank", { user_id_param: userId })
+  const userRank = rankData || 0
 
-  console.log("[v0] All users for ranking:", allUsers?.slice(0, 5))
-
-  const userRank = allUsers?.findIndex((user) => user.id === userId) + 1 || 0
+  console.log("[v0] All users for ranking:", rankData)
 
   console.log("[v0] User rank calculated:", userRank)
 
@@ -113,17 +107,14 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
   console.log("[v0] Final user profile:", userProfile)
 
   const userSubmissions: UserSubmission[] =
-    submissions?.map((sub) => {
-      const mission = missionsData.find((m) => m.id === sub.mission_id)
-      return {
-        id: sub.id,
-        mission_title: mission?.title || "Unknown Mission",
-        mission_id: sub.mission_id,
-        points_awarded: sub.points_awarded || 0,
-        created_at: sub.created_at,
-        status: sub.status,
-      }
-    }) || []
+    submissions?.map((sub: any) => ({
+      id: sub.id,
+      mission_title: sub.missions?.title || "Unknown Mission",
+      mission_id: sub.mission_id,
+      points_awarded: sub.points_awarded || 0,
+      created_at: sub.created_at,
+      status: sub.status,
+    })) || []
 
   return { profile: userProfile, submissions: userSubmissions }
 }
@@ -220,7 +211,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
                     {profile.customer_obsession && (
                       <div className="mb-4 p-4 bg-muted/50 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
-                          <Target className="h-4 w-4 text-primary" />
+                          <Target className="h-4 w-4 text-primary mx-auto mb-2" />
                           <h3 className="font-medium text-sm">Customer Obsession Belief</h3>
                         </div>
                         <div className="flex items-center gap-3">

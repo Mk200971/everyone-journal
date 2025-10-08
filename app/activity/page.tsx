@@ -37,7 +37,7 @@ interface ActivityItem {
   profile_changes?: string[]
 }
 
-async function getRecentActivity(): Promise<ActivityItem[]> {
+async function getRecentActivity(page: number): Promise<ActivityItem[]> {
   const cookieStore = await cookies()
 
   const supabase = createServerClient(
@@ -65,21 +65,15 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const ITEMS_PER_PAGE = 20
+  const startRange = (page - 1) * ITEMS_PER_PAGE
+  const endRange = startRange + ITEMS_PER_PAGE - 1
+
   const { data: submissions, error: submissionsError } = await supabase
     .from("submissions")
-    .select(`
-      id,
-      created_at,
-      status,
-      points_awarded,
-      text_submission,
-      media_url,
-      user_id,
-      mission_id,
-      answers
-    `)
+    .select("id, created_at, status, points_awarded, text_submission, media_url, user_id, mission_id, answers")
     .order("created_at", { ascending: false })
-    .limit(20)
+    .range(startRange, endRange)
 
   const { data: profileActivities, error: profileActivitiesError } = await supabase
     .from("profile_activities")
@@ -93,19 +87,15 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
   }
 
   const userIds = [...new Set(submissions.map((s) => s.user_id))]
-
-  if (profileActivities && profileActivities.length > 0) {
-    const profileUserIds = profileActivities.map((a) => a.user_id)
-    userIds.push(...profileUserIds)
-  }
-
-  const { data: profiles } = await supabase.from("profiles").select("id, name, avatar_url").in("id", userIds)
-
   const missionIds = [...new Set(submissions.map((s) => s.mission_id))]
-  const { data: missions } = await supabase
-    .from("missions")
-    .select("id, title, submission_schema, type, mission_number, points_value")
-    .in("id", missionIds)
+
+  const [{ data: profiles }, { data: missions }] = await Promise.all([
+    supabase.from("profiles").select("id, name, avatar_url").in("id", userIds),
+    supabase
+      .from("missions")
+      .select("id, title, submission_schema, type, mission_number, points_value")
+      .in("id", missionIds),
+  ])
 
   const profilesMap = new Map(profiles?.map((p) => [p.id, p]) || [])
   const missionsMap = new Map(missions?.map((m) => [m.id, m]) || [])
@@ -114,11 +104,7 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
 
   const { data: likesData, error: likesError } = await supabase
     .from("likes")
-    .select(`
-      submission_id, 
-      user_id,
-      profiles!inner(name, avatar_url)
-    `)
+    .select("submission_id, user_id, profiles!inner(name, avatar_url)")
     .in("submission_id", submissionIds)
 
   const likesCount =
@@ -162,7 +148,7 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     const profile = profilesMap.get(submission.user_id)
     const mission = missionsMap.get(submission.mission_id)
 
-    if (!profile || !mission) return // Skip if we can't find related data
+    if (!profile || !mission) return
 
     if (submission.status === "approved") {
       activities.push({
@@ -170,7 +156,7 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         type: "mission_completed",
         user_name: profile.name || "Anonymous",
         user_avatar: profile.avatar_url,
-        user_id: submission.user_id, // Include user_id for profile linking
+        user_id: submission.user_id,
         mission_title: mission.title,
         mission_type: mission.type,
         mission_number: mission.mission_number,
@@ -193,7 +179,7 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         type: "mission_submitted",
         user_name: profile.name || "Anonymous",
         user_avatar: profile.avatar_url,
-        user_id: submission.user_id, // Include user_id for profile linking
+        user_id: submission.user_id,
         mission_title: mission.title,
         mission_type: mission.type,
         mission_number: mission.mission_number,
@@ -237,7 +223,7 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         type: "user_joined",
         user_name: user.name || "New Member",
         user_avatar: user.avatar_url,
-        user_id: user.id, // Include user_id for profile linking
+        user_id: user.id,
         created_at: user.created_at,
       })
     })
@@ -416,7 +402,6 @@ function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissio
         const numberMatch = fieldName.match(/(\d+)\/(\d+)/)
         const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
 
-        const questionLabel = question.label || fieldName
         const questionHelperText = question.helperText || question.helper_text || question.description
 
         return (
@@ -427,9 +412,7 @@ function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissio
               </span>
             </div>
 
-            <p className="text-sm font-medium text-foreground">{questionLabel}</p>
-
-            {questionHelperText && questionHelperText !== questionLabel && (
+            {questionHelperText && questionHelperText !== question.label && (
               <p className="text-sm text-muted-foreground">{questionHelperText}</p>
             )}
 
@@ -767,7 +750,7 @@ function ActivityStats({
 }
 
 export default async function ActivityPage() {
-  const [activities, communityStats] = await Promise.all([getRecentActivity(), getCommunityStats()])
+  const [activities, communityStats] = await Promise.all([getRecentActivity(1), getCommunityStats()])
 
   return (
     <div className="min-h-screen relative overflow-hidden">

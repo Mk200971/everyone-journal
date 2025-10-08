@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { MissionCard } from "@/components/mission-card"
 import { MissionFilter } from "@/components/mission-filter"
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -95,6 +95,17 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
   const [isHydrated, setIsHydrated] = useState(false)
   const [userSubmissions, setUserSubmissions] = useState<Record<string, any[]>>({})
 
+  const abortControllersRef = useRef<{
+    activity?: AbortController
+    users?: AbortController
+    submissions?: AbortController
+  }>({})
+  const fetchTimeoutsRef = useRef<{
+    activity?: NodeJS.Timeout
+    users?: NodeJS.Timeout
+    submissions?: NodeJS.Timeout
+  }>({})
+
   useEffect(() => {
     setIsHydrated(true)
   }, [])
@@ -107,79 +118,119 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
 
     const fetchRecentActivity = async () => {
       if (!mounted) return
-      try {
-        const result = await fetchAllCommunityActivity()
-        if (mounted && result.success) {
-          setRecentActivity(result.data)
-        }
-      } catch (error) {
-        console.error("Error fetching activity:", error)
+
+      if (fetchTimeoutsRef.current.activity) {
+        clearTimeout(fetchTimeoutsRef.current.activity)
       }
+
+      fetchTimeoutsRef.current.activity = setTimeout(async () => {
+        if (!mounted) return
+
+        try {
+          const result = await fetchAllCommunityActivity()
+          if (mounted && result.success) {
+            setRecentActivity(result.data)
+          }
+        } catch (error) {
+          if (mounted) {
+            console.error("Error fetching activity:", error)
+          }
+        }
+      }, 300)
     }
 
     const fetchTopUsers = async () => {
       if (!mounted) return
-      try {
-        const { data: profiles, error } = await supabase
-          .from("profiles")
-          .select(`
-            id, 
-            name, 
-            avatar_url, 
-            total_points,
-            job_title,
-            department
-          `)
-          .order("total_points", { ascending: false })
-          .limit(3)
 
-        if (mounted && !error && profiles) {
-          const profilesWithActivity = await Promise.all(
-            profiles.map(async (profile) => {
-              const { count } = await supabase
-                .from("submissions")
-                .select("id", { count: "exact", head: true })
-                .eq("user_id", profile.id)
-                .eq("status", "approved")
-
-              return {
-                ...profile,
-                rank: profiles.indexOf(profile) + 1,
-                activityCount: count || 0,
-              }
-            }),
-          )
-          setTopUsers(profilesWithActivity)
-        }
-      } catch (error) {
-        console.error("Error fetching top users:", error)
+      if (fetchTimeoutsRef.current.users) {
+        clearTimeout(fetchTimeoutsRef.current.users)
       }
+
+      fetchTimeoutsRef.current.users = setTimeout(async () => {
+        if (!mounted) return
+
+        try {
+          const { data: profiles, error } = await supabase
+            .from("profiles")
+            .select(`
+              id, 
+              name, 
+              avatar_url, 
+              total_points,
+              job_title,
+              department
+            `)
+            .order("total_points", { ascending: false })
+            .limit(3)
+
+          if (!mounted) return
+
+          if (!error && profiles) {
+            const profilesWithActivity = await Promise.all(
+              profiles.map(async (profile) => {
+                if (!mounted) return null
+
+                const { count } = await supabase
+                  .from("submissions")
+                  .select("id", { count: "exact", head: true })
+                  .eq("user_id", profile.id)
+                  .eq("status", "approved")
+
+                return {
+                  ...profile,
+                  rank: profiles.indexOf(profile) + 1,
+                  activityCount: count || 0,
+                }
+              }),
+            )
+
+            if (mounted) {
+              setTopUsers(profilesWithActivity.filter(Boolean) as LeaderboardEntry[])
+            }
+          }
+        } catch (error) {
+          if (mounted) {
+            console.error("Error fetching top users:", error)
+          }
+        }
+      }, 300)
     }
 
     const fetchUserSubmissions = async () => {
       if (!mounted) return
-      try {
-        const { data, error } = await supabase
-          .from("submissions")
-          .select("id, mission_id, status, created_at")
-          .eq("user_id", initialData.user.id)
 
-        if (mounted && !error && data) {
-          const submissionsByMission = data.reduce(
-            (acc, submission) => {
-              if (!acc[submission.mission_id]) {
-                acc[submission.mission_id] = []
-              }
-              acc[submission.mission_id].push(submission)
-              return acc
-            },
-            {} as Record<string, any[]>,
-          )
-          setUserSubmissions(submissionsByMission)
-        }
-      } catch (error) {
-        console.error("Error fetching user submissions:", error)
+      if (fetchTimeoutsRef.current.submissions) {
+        clearTimeout(fetchTimeoutsRef.current.submissions)
       }
+
+      fetchTimeoutsRef.current.submissions = setTimeout(async () => {
+        if (!mounted) return
+
+        try {
+          const { data, error } = await supabase
+            .from("submissions")
+            .select("id, mission_id, status, created_at")
+            .eq("user_id", initialData.user.id)
+
+          if (mounted && !error && data) {
+            const submissionsByMission = data.reduce(
+              (acc, submission) => {
+                if (!acc[submission.mission_id]) {
+                  acc[submission.mission_id] = []
+                }
+                acc[submission.mission_id].push(submission)
+                return acc
+              },
+              {} as Record<string, any[]>,
+            )
+            setUserSubmissions(submissionsByMission)
+          }
+        } catch (error) {
+          if (mounted) {
+            console.error("Error fetching user submissions:", error)
+          }
+        }
+      }, 300)
     }
 
     fetchUserSubmissions()
@@ -193,10 +244,51 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
           schema: "public",
           table: "submissions",
         },
-        () => {
+        (payload) => {
           if (mounted) {
-            fetchRecentActivity()
-            fetchUserSubmissions()
+            // Incremental update: only update the specific submission
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              const newSubmission = payload.new as any
+
+              // Update recent activity incrementally
+              setRecentActivity((prev) => {
+                const exists = prev.some((a) => a.id === newSubmission.id)
+                if (exists) {
+                  return prev.map((a) =>
+                    a.id === newSubmission.id
+                      ? {
+                          ...a,
+                          status: newSubmission.status,
+                          points_awarded: newSubmission.points_awarded,
+                        }
+                      : a,
+                  )
+                }
+                // For new submissions, fetch full activity to get related data
+                fetchRecentActivity()
+                return prev
+              })
+
+              // Update user submissions incrementally
+              if (newSubmission.user_id === initialData.user.id) {
+                setUserSubmissions((prev) => ({
+                  ...prev,
+                  [newSubmission.mission_id]: [
+                    ...(prev[newSubmission.mission_id] || []).filter((s) => s.id !== newSubmission.id),
+                    newSubmission,
+                  ],
+                }))
+              }
+            } else if (payload.eventType === "DELETE") {
+              const oldSubmission = payload.old as any
+              setRecentActivity((prev) => prev.filter((a) => a.id !== oldSubmission.id))
+              setUserSubmissions((prev) => ({
+                ...prev,
+                [oldSubmission.mission_id]: (prev[oldSubmission.mission_id] || []).filter(
+                  (s) => s.id !== oldSubmission.id,
+                ),
+              }))
+            }
           }
         },
       )
@@ -211,9 +303,33 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
           schema: "public",
           table: "profiles",
         },
-        () => {
+        (payload) => {
           if (mounted) {
-            fetchTopUsers()
+            const updatedProfile = payload.new as any
+
+            // Incremental update: only update the specific user in leaderboard
+            setTopUsers((prev) => {
+              const userIndex = prev.findIndex((u) => u.id === updatedProfile.id)
+              if (userIndex !== -1) {
+                const updated = [...prev]
+                updated[userIndex] = {
+                  ...updated[userIndex],
+                  name: updatedProfile.name,
+                  avatar_url: updatedProfile.avatar_url,
+                  total_points: updatedProfile.total_points,
+                  job_title: updatedProfile.job_title,
+                  department: updatedProfile.department,
+                }
+                // Re-sort if points changed
+                updated.sort((a, b) => b.total_points - a.total_points)
+                return updated.slice(0, 3).map((u, i) => ({ ...u, rank: i + 1 }))
+              }
+              // If user not in top 3, check if they should be now
+              fetchTopUsers()
+              return prev
+            })
+
+            // Update recent activity for profile updates
             fetchRecentActivity()
           }
         },
@@ -222,6 +338,17 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
 
     return () => {
       mounted = false
+
+      if (fetchTimeoutsRef.current.activity) {
+        clearTimeout(fetchTimeoutsRef.current.activity)
+      }
+      if (fetchTimeoutsRef.current.users) {
+        clearTimeout(fetchTimeoutsRef.current.users)
+      }
+      if (fetchTimeoutsRef.current.submissions) {
+        clearTimeout(fetchTimeoutsRef.current.submissions)
+      }
+
       submissionsChannel.unsubscribe()
       profilesChannel.unsubscribe()
     }
@@ -364,7 +491,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                     key={activity.id}
                     role="listitem"
                     className={`flex items-center gap-3 p-3 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors ${
-                      index >= 3 ? "hidden lg:flex" : ""
+                      index >= 3 ? "hidden md:flex" : ""
                     }`}
                   >
                     {activity.user_id ? (

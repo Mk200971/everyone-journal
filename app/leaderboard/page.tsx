@@ -29,7 +29,9 @@ const getRowBackground = (rank: number) => {
 export default async function LeaderboardPage() {
   const supabase = await createClient()
 
-  const { data: users, error } = await supabase.rpc("get_leaderboard")
+  const USERS_PER_PAGE = 50
+
+  const { data: users, error } = await supabase.rpc("get_leaderboard").range(0, USERS_PER_PAGE - 1)
 
   if (error) {
     console.error("Error fetching leaderboard:", error)
