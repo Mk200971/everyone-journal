@@ -38,7 +38,8 @@ export default function Page() {
 
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      router.push("/")
+      // This ensures cookies are fully processed before any navigation/prefetching occurs
+      window.location.href = "/"
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
     } finally {
