@@ -83,7 +83,7 @@ async function getHomePageData(): Promise<HomePageData> {
     error: userError,
   } = await supabase.auth.getUser()
 
-  console.log("[v0] Server-side user authentication:", user ? "authenticated" : "not authenticated", user?.id)
+  console.log("[v0] Home page - User auth:", user ? "authenticated" : "not authenticated", user?.id)
 
   let userProfile = null
   if (user) {
@@ -93,7 +93,7 @@ async function getHomePageData(): Promise<HomePageData> {
       .eq("id", user.id)
       .single()
     userProfile = profile
-    console.log("[v0] User profile loaded:", profile?.name)
+    console.log("[v0] Home page - Profile loaded:", profile?.name)
   }
 
   const [missionsResult, resourcesResult, activityResult, topUsersResult, quotesResult] = await Promise.allSettled([
@@ -152,9 +152,9 @@ async function getHomePageData(): Promise<HomePageData> {
     topUsersResult.status === "fulfilled" && topUsersResult.value.data ? topUsersResult.value.data : []
 
   const quotes = quotesResult.status === "fulfilled" && quotesResult.value.data ? quotesResult.value.data : []
-  console.log("[v0] Server-side quotes loaded:", quotes.length, "items")
+  console.log("[v0] Home page - Quotes loaded:", quotes.length, "items")
   if (quotesResult.status === "rejected") {
-    console.error("[v0] Server-side quotes error:", quotesResult.reason)
+    console.error("[v0] Home page - Quotes error:", quotesResult.reason)
   }
 
   const topUsers = await Promise.all(

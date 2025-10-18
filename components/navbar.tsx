@@ -15,6 +15,8 @@ export async function Navbar({ className = "" }: NavbarProps) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  console.log("[v0] Navbar - User auth:", user ? "authenticated" : "not authenticated", user?.id)
+
   let profile = null
   if (user) {
     const { data: profileData } = await supabase
@@ -24,6 +26,7 @@ export async function Navbar({ className = "" }: NavbarProps) {
       .single()
 
     profile = profileData
+    console.log("[v0] Navbar - Profile loaded:", profileData?.name)
   }
 
   return (

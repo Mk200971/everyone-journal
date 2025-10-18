@@ -5,6 +5,7 @@ import { Trophy } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Navbar } from "@/components/navbar"
 import { getAvatarColor } from "@/lib/utils"
+import { redirect } from "next/navigation"
 
 const getMedalEmoji = (rank: number) => {
   switch (rank) {
@@ -29,15 +30,29 @@ const getRowBackground = (rank: number) => {
 export default async function LeaderboardPage() {
   const supabase = await createClient()
 
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  console.log("[v0] Leaderboard - User auth check:", user ? "authenticated" : "not authenticated", user?.id)
+
+  if (authError || !user) {
+    console.log("[v0] Leaderboard - Auth error, redirecting to login:", authError?.message)
+    redirect("/auth/login?redirectTo=/leaderboard")
+  }
+
   const USERS_PER_PAGE = 50
 
   const { data: users, error } = await supabase.rpc("get_leaderboard").range(0, USERS_PER_PAGE - 1)
 
   if (error) {
-    console.error("Error fetching leaderboard:", error)
+    console.error("[v0] Leaderboard - Error fetching leaderboard:", error)
   }
 
   const sortedUsers = users || []
+
+  console.log("[v0] Leaderboard - Loaded users:", sortedUsers.length)
 
   return (
     <div className="min-h-screen relative overflow-hidden">
