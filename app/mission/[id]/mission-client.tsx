@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useMemo, useState } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -71,9 +71,10 @@ export function MissionClient({
   const [editDynamicAnswers, setEditDynamicAnswers] = useState<any>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [useDynamicForm] = useState(!!mission.submission_schema)
-  const [isSavingProgress, setIsSavingProgress] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isEditingSubmission, setIsEditingSubmission] = useState(false) // Add separate state for editing submissions
+  const [isSavingProgress, startSaveTransition] = useTransition()
+  const [isSubmitting, startSubmitTransition] = useTransition()
+  const [isEditingSubmission, startEditTransition] = useTransition()
+  const [isDeletingDraft, startDeleteTransition] = useTransition()
   const { toast } = useToast()
   const router = useRouter()
 
@@ -85,56 +86,55 @@ export function MissionClient({
       return
     }
 
-    setIsSavingProgress(true)
-    try {
-      const formData = new FormData()
-      formData.append("missionId", mission.id)
+    startSaveTransition(async () => {
+      try {
+        const formData = new FormData()
+        formData.append("missionId", mission.id)
 
-      if (draftSubmissions.length > 0) {
-        formData.append("existingDraftId", draftSubmissions[0].id)
+        if (draftSubmissions.length > 0) {
+          formData.append("existingDraftId", draftSubmissions[0].id)
+        }
+
+        if (useDynamicForm && answers) {
+          formData.append("answers", JSON.stringify(answers))
+          if (mediaFiles && mediaFiles.length > 0) {
+            formData.append("mediaFile", mediaFiles[0])
+          }
+        } else {
+          const form = submissionForms[0]
+          if (!form.textSubmission.trim()) {
+            toast({
+              title: "Nothing to Save",
+              description: "Please write something before saving your progress.",
+              variant: "destructive",
+            })
+            return
+          }
+          formData.append("textSubmission", form.textSubmission)
+          if (form.mediaFile) {
+            formData.append("mediaFile", form.mediaFile)
+          }
+        }
+
+        await saveDraft(formData)
+
+        console.log("[v0] Progress saved successfully")
+        toast({
+          title: "Progress Saved",
+          description: "Your work has been saved as a draft. You can continue later!",
+        })
+
+        // Refresh the page to get updated data
+        router.refresh()
+      } catch (error) {
+        console.error("[v0] Error saving progress:", error)
+        toast({
+          title: "Save Failed",
+          description: "There was an error saving your progress. Please try again.",
+          variant: "destructive",
+        })
       }
-
-      if (useDynamicForm && answers) {
-        formData.append("answers", JSON.stringify(answers))
-        if (mediaFiles && mediaFiles.length > 0) {
-          formData.append("mediaFile", mediaFiles[0])
-        }
-      } else {
-        const form = submissionForms[0]
-        if (!form.textSubmission.trim()) {
-          toast({
-            title: "Nothing to Save",
-            description: "Please write something before saving your progress.",
-            variant: "destructive",
-          })
-          return
-        }
-        formData.append("textSubmission", form.textSubmission)
-        if (form.mediaFile) {
-          formData.append("mediaFile", form.mediaFile)
-        }
-      }
-
-      await saveDraft(formData)
-
-      console.log("[v0] Progress saved successfully")
-      toast({
-        title: "Progress Saved",
-        description: "Your work has been saved as a draft. You can continue later!",
-      })
-
-      // Refresh the page to get updated data
-      router.refresh()
-    } catch (error) {
-      console.error("[v0] Error saving progress:", error)
-      toast({
-        title: "Save Failed",
-        description: "There was an error saving your progress. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSavingProgress(false)
-    }
+    })
   }
 
   const handleDynamicSubmit = async (answers: any, mediaFiles: File[]) => {
@@ -145,36 +145,34 @@ export function MissionClient({
       return
     }
 
-    setIsSubmitting(true)
-    try {
-      const formData = new FormData()
-      formData.append("missionId", mission.id)
-      formData.append("answers", JSON.stringify(answers))
+    startSubmitTransition(async () => {
+      try {
+        const formData = new FormData()
+        formData.append("missionId", mission.id)
+        formData.append("answers", JSON.stringify(answers))
 
-      if (mediaFiles.length > 0) {
-        formData.append("mediaFile", mediaFiles[0])
+        if (mediaFiles.length > 0) {
+          formData.append("mediaFile", mediaFiles[0])
+        }
+
+        if (draftSubmissions.length > 0) {
+          formData.append("draftId", draftSubmissions[0].id)
+          await submitDraftAsFinal(formData)
+        } else {
+          await createNewSubmission(formData)
+        }
+
+        console.log("[v0] Submission successful, showing success modal")
+        setShowSuccessModal(true)
+      } catch (error) {
+        console.error("[v0] Error submitting mission:", error)
+        toast({
+          title: "Submission Failed",
+          description: "There was an error submitting your mission. Please try again.",
+          variant: "destructive",
+        })
       }
-
-      if (draftSubmissions.length > 0) {
-        formData.append("draftId", draftSubmissions[0].id)
-        await submitDraftAsFinal(formData)
-      } else {
-        await createNewSubmission(formData)
-      }
-
-      console.log("[v0] Submission successful, showing success modal")
-      setShowSuccessModal(true)
-    } catch (error) {
-      console.error("[v0] Error submitting mission:", error)
-      toast({
-        title: "Submission Failed",
-        description: "There was an error submitting your mission. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSubmitting(false)
-      console.log("[v0] handleDynamicSubmit - reset isSubmitting to false")
-    }
+    })
   }
 
   const formatFieldLabel = (key: string): string => {
@@ -292,63 +290,60 @@ export function MissionClient({
       return
     }
 
-    setIsSubmitting(true)
+    startSubmitTransition(async () => {
+      try {
+        const maxSubmissions = mission?.max_submissions_per_user || 1
+        const currentSubmissions = existingSubmissions.length
+        const newSubmissions = submissionForms.filter((form) => form.textSubmission.trim()).length
 
-    try {
-      const maxSubmissions = mission?.max_submissions_per_user || 1
-      const currentSubmissions = existingSubmissions.length
-      const newSubmissions = submissionForms.filter((form) => form.textSubmission.trim()).length
-
-      if (currentSubmissions + newSubmissions > maxSubmissions) {
-        toast({
-          title: "Submission Limit Exceeded",
-          description: `This mission allows a maximum of ${maxSubmissions} submission(s). You have ${currentSubmissions} existing submission(s).`,
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (draftSubmissions.length > 0) {
-        const form = submissionForms[0]
-        const formData = new FormData()
-        formData.append("draftId", draftSubmissions[0].id)
-        formData.append("textSubmission", form.textSubmission)
-
-        if (form.mediaFile) {
-          formData.append("mediaFile", form.mediaFile)
+        if (currentSubmissions + newSubmissions > maxSubmissions) {
+          toast({
+            title: "Submission Limit Exceeded",
+            description: `This mission allows a maximum of ${maxSubmissions} submission(s). You have ${currentSubmissions} existing submission(s).`,
+            variant: "destructive",
+          })
+          return
         }
 
-        await submitDraftAsFinal(formData)
-      } else {
-        // Original submission logic
-        console.log("[v0] Submitting new forms:", submissionForms.length)
-        for (const form of submissionForms) {
-          if (form.textSubmission.trim()) {
-            const formData = new FormData()
-            formData.append("missionId", mission.id)
-            formData.append("textSubmission", form.textSubmission)
-            if (form.mediaFile) {
-              formData.append("mediaFile", form.mediaFile)
-            }
+        if (draftSubmissions.length > 0) {
+          const form = submissionForms[0]
+          const formData = new FormData()
+          formData.append("draftId", draftSubmissions[0].id)
+          formData.append("textSubmission", form.textSubmission)
 
-            await submitMission(formData)
+          if (form.mediaFile) {
+            formData.append("mediaFile", form.mediaFile)
+          }
+
+          await submitDraftAsFinal(formData)
+        } else {
+          // Original submission logic
+          console.log("[v0] Submitting new forms:", submissionForms.length)
+          for (const form of submissionForms) {
+            if (form.textSubmission.trim()) {
+              const formData = new FormData()
+              formData.append("missionId", mission.id)
+              formData.append("textSubmission", form.textSubmission)
+              if (form.mediaFile) {
+                formData.append("mediaFile", form.mediaFile)
+              }
+
+              await submitMission(formData)
+            }
           }
         }
-      }
 
-      console.log("[v0] Submission successful, showing success modal")
-      setShowSuccessModal(true)
-    } catch (error) {
-      console.error("[v0] Error submitting mission:", error)
-      toast({
-        title: "Submission Failed",
-        description: "There was an error submitting your mission. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSubmitting(false)
-      console.log("[v0] handleSubmit - reset isSubmitting to false")
-    }
+        console.log("[v0] Submission successful, showing success modal")
+        setShowSuccessModal(true)
+      } catch (error) {
+        console.error("[v0] Error submitting mission:", error)
+        toast({
+          title: "Submission Failed",
+          description: "There was an error submitting your mission. Please try again.",
+          variant: "destructive",
+        })
+      }
+    })
   }
 
   const handleBackToHome = () => {
@@ -411,63 +406,67 @@ export function MissionClient({
   }
 
   const handleDeleteDraft = async (draftId: string) => {
-    try {
-      await deleteDraftAction(draftId)
+    startDeleteTransition(async () => {
+      try {
+        await deleteDraftAction(draftId)
 
-      toast({
-        title: "Draft Deleted",
-        description: "Your draft has been deleted.",
-      })
+        toast({
+          title: "Draft Deleted",
+          description: "Your draft has been deleted.",
+        })
 
-      // Refresh the page to get updated data
-      router.refresh()
-    } catch (error) {
-      console.error("Error deleting draft:", error)
-      toast({
-        title: "Delete Failed",
-        description: "There was an error deleting your draft.",
-        variant: "destructive",
-      })
-    }
+        // Refresh the page to get updated data
+        router.refresh()
+      } catch (error) {
+        console.error("Error deleting draft:", error)
+        toast({
+          title: "Delete Failed",
+          description: "There was an error deleting your draft.",
+          variant: "destructive",
+        })
+      }
+    })
   }
 
   const saveEditedSubmission = async (submissionId: string) => {
-    try {
-      const formData = new FormData()
-      formData.append("submissionId", submissionId)
-      formData.append("textSubmission", editFormData.textSubmission)
+    startEditTransition(async () => {
+      try {
+        const formData = new FormData()
+        formData.append("submissionId", submissionId)
+        formData.append("textSubmission", editFormData.textSubmission)
 
-      if (editFormData.mediaFile) {
-        formData.append("mediaFile", editFormData.mediaFile)
-      }
+        if (editFormData.mediaFile) {
+          formData.append("mediaFile", editFormData.mediaFile)
+        }
 
-      const result = await updateSubmission(formData)
+        const result = await updateSubmission(formData)
 
-      setEditingSubmission(null)
-      setEditFormData({ textSubmission: "", mediaFile: null })
+        setEditingSubmission(null)
+        setEditFormData({ textSubmission: "", mediaFile: null })
 
-      if (result.wasApproved) {
+        if (result.wasApproved) {
+          toast({
+            title: "Submission Updated",
+            description: "Your submission has been updated and is now pending review again.",
+          })
+        } else {
+          toast({
+            title: "Submission Updated",
+            description: "Your submission has been updated successfully.",
+          })
+        }
+
+        // Refresh the page to get updated data
+        router.refresh()
+      } catch (error) {
+        console.error("Error updating submission:", error)
         toast({
-          title: "Submission Updated",
-          description: "Your submission has been updated and is now pending review again.",
-        })
-      } else {
-        toast({
-          title: "Submission Updated",
-          description: "Your submission has been updated successfully.",
+          title: "Update Failed",
+          description: "There was an error updating your submission. Please try again.",
+          variant: "destructive",
         })
       }
-
-      // Refresh the page to get updated data
-      router.refresh()
-    } catch (error) {
-      console.error("Error updating submission:", error)
-      toast({
-        title: "Update Failed",
-        description: "There was an error updating your submission. Please try again.",
-        variant: "destructive",
-      })
-    }
+    })
   }
 
   const handleDynamicEdit = async (answers: any, mediaFiles: File[], removedMediaUrls?: string[]) => {
@@ -476,49 +475,48 @@ export function MissionClient({
       return
     }
 
-    setIsEditingSubmission(true)
-    try {
-      const formData = new FormData()
-      formData.append("submissionId", editingSubmission!)
-      formData.append("answers", JSON.stringify(answers))
+    startEditTransition(async () => {
+      try {
+        const formData = new FormData()
+        formData.append("submissionId", editingSubmission!)
+        formData.append("answers", JSON.stringify(answers))
 
-      if (removedMediaUrls && removedMediaUrls.length > 0) {
-        formData.append("removedMediaUrls", JSON.stringify(removedMediaUrls))
-      }
+        if (removedMediaUrls && removedMediaUrls.length > 0) {
+          formData.append("removedMediaUrls", JSON.stringify(removedMediaUrls))
+        }
 
-      if (mediaFiles.length > 0) {
-        formData.append("mediaFile", mediaFiles[0])
-      }
+        if (mediaFiles.length > 0) {
+          formData.append("mediaFile", mediaFiles[0])
+        }
 
-      const result = await updateSubmission(formData)
+        const result = await updateSubmission(formData)
 
-      setEditingSubmission(null)
-      setEditDynamicAnswers(null)
+        setEditingSubmission(null)
+        setEditDynamicAnswers(null)
 
-      if (result.wasApproved) {
+        if (result.wasApproved) {
+          toast({
+            title: "Submission Updated",
+            description: "Your submission has been updated and is now pending review again.",
+          })
+        } else {
+          toast({
+            title: "Submission Updated",
+            description: "Your submission has been updated successfully.",
+          })
+        }
+
+        // Refresh the page to get updated data
+        router.refresh()
+      } catch (error) {
+        console.error("Error updating submission:", error)
         toast({
-          title: "Submission Updated",
-          description: "Your submission has been updated and is now pending review again.",
-        })
-      } else {
-        toast({
-          title: "Submission Updated",
-          description: "Your submission has been updated successfully.",
+          title: "Update Failed",
+          description: "There was an error updating your submission. Please try again.",
+          variant: "destructive",
         })
       }
-
-      // Refresh the page to get updated data
-      router.refresh()
-    } catch (error) {
-      console.error("Error updating submission:", error)
-      toast({
-        title: "Update Failed",
-        description: "There was an error updating your submission. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsEditingSubmission(false)
-    }
+    })
   }
 
   const maxSubmissions = mission.max_submissions_per_user || 1
@@ -668,7 +666,7 @@ export function MissionClient({
             )}
 
             {mission.tips_inspiration && (
-              <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 backdrop-blur-lg rounded-lg p-4 sm:p-6 border border-white/20 dark:border-white/10">
+              <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 backdrop-blur-lg rounded-lg p-4 sm:p-6 border border-white/20 dark:border-white/10 mb-4 sm:mb-6">
                 <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-2 sm:mb-3 flex items-center gap-2">
                   <span className="text-amber-500">💡</span>
                   Tips & Inspiration
@@ -746,9 +744,10 @@ export function MissionClient({
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteDraft(draft.id)}
-                          className="text-red-400 hover:text-red-300 h-6 px-2"
+                          disabled={isDeletingDraft}
+                          className="text-red-400 hover:text-red-300 h-6 px-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className={`h-4 w-4 ${isDeletingDraft ? "animate-pulse" : ""}`} />
                         </Button>
                       </div>
                     </div>
@@ -820,7 +819,7 @@ export function MissionClient({
                               onSubmit={handleDynamicEdit}
                               submitButtonText="Save Changes"
                               isSubmitting={isEditingSubmission}
-                              onSubmittingChange={setIsEditingSubmission}
+                              onSubmittingChange={() => {}} // No-op as startEditTransition handles the state
                               showSuccessDialogOnSubmit={true}
                               className="bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-4"
                             />
@@ -852,14 +851,19 @@ export function MissionClient({
                                 <Upload className="h-4 w-4 text-primary" />
                                 Update Media (Optional)
                               </Label>
-                              <Input
-                                type="file"
-                                accept="image/*,video/*"
-                                onChange={(e) =>
-                                  setEditFormData((prev) => ({ ...prev, mediaFile: e.target.files?.[0] || null }))
-                                }
-                                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-2 file:py-1 file:mr-2 text-sm"
-                              />
+                              <div className="bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-3">
+                                <Input
+                                  type="file"
+                                  accept="image/*,video/*"
+                                  onChange={(e) =>
+                                    setEditFormData((prev) => ({ ...prev, mediaFile: e.target.files?.[0] || null }))
+                                  }
+                                  className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-2 file:py-1 file:mr-2 text-sm"
+                                />
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Supported formats: Images (JPG, PNG, GIF) and Videos (MP4, MOV)
+                                </p>
+                              </div>
                             </div>
 
                             <div className="flex gap-2">
@@ -918,7 +922,7 @@ export function MissionClient({
                       initialAnswers={initialDynamicAnswers}
                       initialMediaUrls={initialMediaUrls}
                       isSubmitting={isSubmitting}
-                      onSubmittingChange={setIsSubmitting}
+                      onSubmittingChange={() => {}} // No-op as startSubmitTransition handles the state
                       className="bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-4"
                     />
                   </div>
@@ -1016,7 +1020,7 @@ export function MissionClient({
                         className="flex-1 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 hover:bg-white/20 dark:hover:bg-black/30 text-foreground font-semibold py-3 sm:py-4 text-base sm:text-lg hover:scale-105 transition-all duration-300 min-h-[48px] sm:min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                         size="lg"
                       >
-                        <Save className="h-5 w-5 mr-2" />
+                        <Save className={`h-5 w-5 mr-2 ${isSavingProgress ? "animate-pulse" : ""}`} />
                         {isSavingProgress ? "Saving..." : "Save Progress"}
                       </Button>
                       <Button

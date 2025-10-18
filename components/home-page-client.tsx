@@ -16,9 +16,12 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { MissionCard } from "@/components/mission-card"
 import { MissionFilter } from "@/components/mission-filter"
-import { useState, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { fetchAllCommunityActivity } from "@/lib/actions"
+import { getAvatarColor } from "@/lib/utils"
 
 interface Mission {
   id: string
@@ -83,13 +86,273 @@ interface HomePageClientProps {
 }
 
 export function HomePageClient({ initialData }: HomePageClientProps) {
-  const missions = initialData.missions
-  const resources = initialData.resources
-  const recentActivity = initialData.recentActivity
-  const topUsers = initialData.topUsers
-
+  const [missions, setMissions] = useState<Mission[]>(initialData.missions)
+  const [resources, setResources] = useState<Resource[]>(initialData.resources)
+  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>(initialData.recentActivity)
+  const [topUsers, setTopUsers] = useState<LeaderboardEntry[]>(initialData.topUsers)
   const [selectedType, setSelectedType] = useState("All")
   const [selectedResourceType, setSelectedResourceType] = useState("All Resources")
+  const [isHydrated, setIsHydrated] = useState(false)
+  const [userSubmissions, setUserSubmissions] = useState<Record<string, any[]>>({})
+
+  const abortControllersRef = useRef<{
+    activity?: AbortController
+    users?: AbortController
+    submissions?: AbortController
+  }>({})
+  const fetchTimeoutsRef = useRef<{
+    activity?: NodeJS.Timeout
+    users?: NodeJS.Timeout
+    submissions?: NodeJS.Timeout
+  }>({})
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!initialData.user || !isHydrated) return
+
+    const supabase = createClient()
+    let mounted = true
+
+    const fetchRecentActivity = async () => {
+      if (!mounted) return
+
+      if (fetchTimeoutsRef.current.activity) {
+        clearTimeout(fetchTimeoutsRef.current.activity)
+      }
+
+      fetchTimeoutsRef.current.activity = setTimeout(async () => {
+        if (!mounted) return
+
+        try {
+          const result = await fetchAllCommunityActivity()
+          if (mounted && result.success) {
+            setRecentActivity(result.data)
+          }
+        } catch (error) {
+          if (mounted) {
+            console.error("Error fetching activity:", error)
+          }
+        }
+      }, 300)
+    }
+
+    const fetchTopUsers = async () => {
+      if (!mounted) return
+
+      if (fetchTimeoutsRef.current.users) {
+        clearTimeout(fetchTimeoutsRef.current.users)
+      }
+
+      fetchTimeoutsRef.current.users = setTimeout(async () => {
+        if (!mounted) return
+
+        try {
+          const { data: profiles, error } = await supabase
+            .from("profiles")
+            .select(`
+              id, 
+              name, 
+              avatar_url, 
+              total_points,
+              job_title,
+              department
+            `)
+            .order("total_points", { ascending: false })
+            .limit(3)
+
+          if (!mounted) return
+
+          if (!error && profiles) {
+            const profilesWithActivity = await Promise.all(
+              profiles.map(async (profile) => {
+                if (!mounted) return null
+
+                const { count } = await supabase
+                  .from("submissions")
+                  .select("id", { count: "exact", head: true })
+                  .eq("user_id", profile.id)
+                  .eq("status", "approved")
+
+                return {
+                  ...profile,
+                  rank: profiles.indexOf(profile) + 1,
+                  activityCount: count || 0,
+                }
+              }),
+            )
+
+            if (mounted) {
+              setTopUsers(profilesWithActivity.filter(Boolean) as LeaderboardEntry[])
+            }
+          }
+        } catch (error) {
+          if (mounted) {
+            console.error("Error fetching top users:", error)
+          }
+        }
+      }, 300)
+    }
+
+    const fetchUserSubmissions = async () => {
+      if (!mounted) return
+
+      if (fetchTimeoutsRef.current.submissions) {
+        clearTimeout(fetchTimeoutsRef.current.submissions)
+      }
+
+      fetchTimeoutsRef.current.submissions = setTimeout(async () => {
+        if (!mounted) return
+
+        try {
+          const { data, error } = await supabase
+            .from("submissions")
+            .select("id, mission_id, status, created_at")
+            .eq("user_id", initialData.user.id)
+
+          if (mounted && !error && data) {
+            const submissionsByMission = data.reduce(
+              (acc, submission) => {
+                if (!acc[submission.mission_id]) {
+                  acc[submission.mission_id] = []
+                }
+                acc[submission.mission_id].push(submission)
+                return acc
+              },
+              {} as Record<string, any[]>,
+            )
+            setUserSubmissions(submissionsByMission)
+          }
+        } catch (error) {
+          if (mounted) {
+            console.error("Error fetching user submissions:", error)
+          }
+        }
+      }, 300)
+    }
+
+    fetchUserSubmissions()
+
+    const submissionsChannel = supabase
+      .channel("public:submissions")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "submissions",
+        },
+        (payload) => {
+          if (mounted) {
+            // Incremental update: only update the specific submission
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              const newSubmission = payload.new as any
+
+              // Update recent activity incrementally
+              setRecentActivity((prev) => {
+                const exists = prev.some((a) => a.id === newSubmission.id)
+                if (exists) {
+                  return prev.map((a) =>
+                    a.id === newSubmission.id
+                      ? {
+                          ...a,
+                          status: newSubmission.status,
+                          points_awarded: newSubmission.points_awarded,
+                        }
+                      : a,
+                  )
+                }
+                // For new submissions, fetch full activity to get related data
+                fetchRecentActivity()
+                return prev
+              })
+
+              // Update user submissions incrementally
+              if (newSubmission.user_id === initialData.user.id) {
+                setUserSubmissions((prev) => ({
+                  ...prev,
+                  [newSubmission.mission_id]: [
+                    ...(prev[newSubmission.mission_id] || []).filter((s) => s.id !== newSubmission.id),
+                    newSubmission,
+                  ],
+                }))
+              }
+            } else if (payload.eventType === "DELETE") {
+              const oldSubmission = payload.old as any
+              setRecentActivity((prev) => prev.filter((a) => a.id !== oldSubmission.id))
+              setUserSubmissions((prev) => ({
+                ...prev,
+                [oldSubmission.mission_id]: (prev[oldSubmission.mission_id] || []).filter(
+                  (s) => s.id !== oldSubmission.id,
+                ),
+              }))
+            }
+          }
+        },
+      )
+      .subscribe()
+
+    const profilesChannel = supabase
+      .channel("public:profiles")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+        },
+        (payload) => {
+          if (mounted) {
+            const updatedProfile = payload.new as any
+
+            // Incremental update: only update the specific user in leaderboard
+            setTopUsers((prev) => {
+              const userIndex = prev.findIndex((u) => u.id === updatedProfile.id)
+              if (userIndex !== -1) {
+                const updated = [...prev]
+                updated[userIndex] = {
+                  ...updated[userIndex],
+                  name: updatedProfile.name,
+                  avatar_url: updatedProfile.avatar_url,
+                  total_points: updatedProfile.total_points,
+                  job_title: updatedProfile.job_title,
+                  department: updatedProfile.department,
+                }
+                // Re-sort if points changed
+                updated.sort((a, b) => b.total_points - a.total_points)
+                return updated.slice(0, 3).map((u, i) => ({ ...u, rank: i + 1 }))
+              }
+              // If user not in top 3, check if they should be now
+              fetchTopUsers()
+              return prev
+            })
+
+            // Update recent activity for profile updates
+            fetchRecentActivity()
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      mounted = false
+
+      if (fetchTimeoutsRef.current.activity) {
+        clearTimeout(fetchTimeoutsRef.current.activity)
+      }
+      if (fetchTimeoutsRef.current.users) {
+        clearTimeout(fetchTimeoutsRef.current.users)
+      }
+      if (fetchTimeoutsRef.current.submissions) {
+        clearTimeout(fetchTimeoutsRef.current.submissions)
+      }
+
+      submissionsChannel.unsubscribe()
+      profilesChannel.unsubscribe()
+    }
+  }, [initialData.user, isHydrated])
 
   const filteredMissions = useMemo(
     () =>
@@ -121,7 +384,6 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
       All: missions.length,
     }
 
-    // Extract unique mission types from the missions data
     missions.forEach((mission) => {
       if (mission.type) {
         const type = mission.type.charAt(0).toUpperCase() + mission.type.slice(1)
@@ -191,10 +453,16 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
     }
   }, [])
 
+  const missionsWithSubmissions = useMemo(() => {
+    return filteredMissions.map((mission) => ({
+      ...mission,
+      userSubmissions: userSubmissions[mission.id] || [],
+    }))
+  }, [filteredMissions, userSubmissions])
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8 sm:mb-10">
-        {/* Recent Community Activity */}
         {recentActivity.length > 0 && (
           <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10">
             <CardHeader className="p-4 sm:p-6">
@@ -218,17 +486,19 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0">
               <div className="space-y-3" role="list" aria-label="Recent community activities">
-                {recentActivity.slice(0, 3).map((activity) => (
+                {recentActivity.slice(0, 5).map((activity, index) => (
                   <div
                     key={activity.id}
                     role="listitem"
-                    className="flex items-center gap-3 p-3 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors"
+                    className={`flex items-center gap-3 p-3 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors ${
+                      index >= 3 ? "hidden md:flex" : ""
+                    }`}
                   >
                     {activity.user_id ? (
                       <Link href={`/user/${activity.user_id}`} aria-label={`View ${activity.user_name}'s profile`}>
                         <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                          <AvatarImage src={activity.user_avatar_url || "/placeholder.svg"} alt={activity.user_name} />
-                          <AvatarFallback className="bg-primary/20 text-primary text-xs sm:text-sm">
+                          <AvatarImage src={activity.user_avatar_url || undefined} alt={activity.user_name} />
+                          <AvatarFallback className={getAvatarColor(activity.user_id, activity.user_name)}>
                             {activity.user_name
                               ?.split(" ")
                               .map((n) => n[0])
@@ -238,8 +508,8 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                       </Link>
                     ) : (
                       <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
-                        <AvatarImage src={activity.user_avatar_url || "/placeholder.svg"} alt={activity.user_name} />
-                        <AvatarFallback className="bg-primary/20 text-primary text-xs sm:text-sm">
+                        <AvatarImage src={activity.user_avatar_url || undefined} alt={activity.user_name} />
+                        <AvatarFallback className={getAvatarColor(undefined, activity.user_name)}>
                           {activity.user_name
                             ?.split(" ")
                             .map((n) => n[0])
@@ -357,8 +627,8 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                       <div className="flex flex-col items-center gap-2 flex-shrink-0">
                         <Link href={`/user/${user.id}`} aria-label={`View ${user.name}'s profile`}>
                           <Avatar className="w-12 h-12 sm:w-14 sm:h-14 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                            <AvatarImage src={user.avatar_url || "/placeholder.svg"} alt={user.name} />
-                            <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
+                            <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
+                            <AvatarFallback className={getAvatarColor(user.id, user.name)}>
                               {user.name
                                 ?.split(" ")
                                 .map((n) => n[0])
@@ -451,7 +721,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         role="list"
         aria-label="Available missions"
       >
-        {filteredMissions.map((mission, index) => (
+        {missionsWithSubmissions.map((mission, index) => (
           <div
             key={mission.id}
             role="listitem"
@@ -561,7 +831,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         </section>
       )}
 
-      {filteredMissions.length === 0 && (
+      {missionsWithSubmissions.length === 0 && (
         <div className="text-center py-12 sm:py-16 px-4" role="status" aria-live="polite">
           <div className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-xl p-8 sm:p-12 max-w-md mx-auto">
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-muted/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">

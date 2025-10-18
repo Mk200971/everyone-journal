@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { User, Trophy, LogOut, Settings, BookOpen, Home, Activity, MessageSquare, Target } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { signOut } from "@/lib/actions"
+import { getAvatarColor } from "@/lib/utils"
 
 interface UserProfile {
   id: string
@@ -74,8 +75,8 @@ export function UserDropdown({ initialProfile }: UserDropdownProps) {
         >
           <div className="flex items-center gap-2">
             <Avatar className="w-8 h-8 ring-2 ring-white/20 dark:ring-white/10">
-              <AvatarImage src={profile.avatar_url || "/placeholder.svg"} alt={profile.name} />
-              <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+              <AvatarImage src={profile.avatar_url || undefined} alt={profile.name} />
+              <AvatarFallback className={getAvatarColor(profile.id, profile.name)}>
                 {profile.name
                   ?.split(" ")
                   .map((n) => n[0])
@@ -93,8 +94,8 @@ export function UserDropdown({ initialProfile }: UserDropdownProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <Avatar className="w-10 h-10">
-              <AvatarImage src={profile.avatar_url || "/placeholder.svg"} alt={profile.name} />
-              <AvatarFallback className="bg-primary text-primary-foreground">
+              <AvatarImage src={profile.avatar_url || undefined} alt={profile.name} />
+              <AvatarFallback className={getAvatarColor(profile.id, profile.name)}>
                 {profile.name
                   ?.split(" ")
                   .map((n) => n[0])

@@ -74,11 +74,6 @@ async function getDiscoverData() {
 export default async function DiscoverPage() {
   const data = await getDiscoverData()
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
   return (
     <div className="min-h-screen relative overflow-hidden">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -109,7 +104,7 @@ export default async function DiscoverPage() {
             </div>
           </div>
 
-          <DiscoverClient initialData={data} currentUserId={user?.id || null} />
+          <DiscoverClient initialData={data} />
         </main>
       </div>
     </div>

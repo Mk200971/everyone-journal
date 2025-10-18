@@ -11,9 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { Edit, CheckCircle, Eye, ExternalLink, History } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 import { updateProfile, updateAvatar } from "@/lib/actions"
-import { useState, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useRef, useTransition } from "react"
+import { getAvatarColor } from "@/lib/utils"
 
 interface AccountPageClientProps {
   initialData: {
@@ -28,49 +29,60 @@ interface AccountPageClientProps {
 
 export function AccountPageClient({ initialData }: AccountPageClientProps) {
   const { toast } = useToast()
-  const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState(initialData.profile)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null)
   const [showSubmissionModal, setShowSubmissionModal] = useState(false)
+  const [isProfilePending, startProfileTransition] = useTransition()
+  const [isAvatarPending, startAvatarTransition] = useTransition()
 
   const handleProfileUpdate = async (formData: FormData) => {
-    try {
-      await updateProfile(formData)
-      setShowSuccessModal(true)
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update profile. Please try again.",
-        variant: "destructive",
-      })
-    }
+    startProfileTransition(async () => {
+      try {
+        await updateProfile(formData)
+        setShowSuccessModal(true)
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update profile. Please try again.",
+          variant: "destructive",
+        })
+      }
+    })
   }
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
-    try {
-      const formData = new FormData()
-      formData.append("avatar", file)
+    startAvatarTransition(async () => {
+      try {
+        const formData = new FormData()
+        formData.append("avatar", file)
 
-      await updateAvatar(formData)
+        await updateAvatar(formData)
 
-      router.refresh()
+        const supabase = createClient()
+        const { data: updatedProfile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", initialData.user.id)
+          .single()
+        setProfile(updatedProfile)
 
-      toast({
-        title: "Success",
-        description: "Your profile picture was updated successfully.",
-      })
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update profile picture. Please try again.",
-        variant: "destructive",
-      })
-    }
+        toast({
+          title: "Success",
+          description: "Your profile picture was updated successfully.",
+        })
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update profile picture. Please try again.",
+          variant: "destructive",
+        })
+      }
+    })
   }
 
   const handleSubmissionClick = (submission: any) => {
@@ -93,8 +105,10 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
           <div className="flex justify-center mb-3 sm:mb-4">
             <div className="relative">
               <Avatar className="w-16 h-16 sm:w-24 sm:h-24 ring-4 ring-white/20 dark:ring-white/10">
-                <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={profile?.name || "User"} />
-                <AvatarFallback className="bg-primary text-primary-foreground text-lg sm:text-2xl">
+                <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.name || "User"} />
+                <AvatarFallback
+                  className={`bg-primary text-primary-foreground text-lg sm:text-2xl ${getAvatarColor(initialData.user.id, profile?.name || "User")}`}
+                >
                   {profile?.name
                     ?.split(" ")
                     .map((n) => n[0])
@@ -103,9 +117,10 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
               </Avatar>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-2 -right-2 sm:-bottom-1 sm:-right-1 p-1 sm:p-1.5 hover:bg-primary/90 text-primary-foreground rounded-full shadow-lg hover:scale-110 transition-all duration-300 px-3.5 py-0 my-0 mx-12 bg-border"
+                disabled={isAvatarPending}
+                className="absolute -bottom-2 -right-2 sm:-bottom-1 sm:-right-1 p-1 sm:p-1.5 hover:bg-primary/90 text-primary-foreground rounded-full shadow-lg hover:scale-110 transition-all duration-300 px-3.5 py-0 my-0 mx-12 bg-border disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                <Edit className={`h-3 w-3 sm:h-4 sm:w-4 ${isAvatarPending ? "animate-pulse" : ""}`} />
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
             </div>
@@ -229,9 +244,10 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
 
             <Button
               type="submit"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 h-11 sm:h-10"
+              disabled={isProfilePending}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 h-11 sm:h-10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              Update Profile
+              {isProfilePending ? "Updating..." : "Update Profile"}
             </Button>
           </form>
         </CardContent>
@@ -275,7 +291,7 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 sm:p-6 pt-0">
-            <div className="rounded-lg border border-white/20 dark:border-white/10 overflow-hidden">
+            <div className="hidden sm:block rounded-lg border border-white/20 dark:border-white/10 overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="border-white/20 dark:border-white/10 hover:bg-white/5 dark:hover:bg-black/10">
@@ -336,6 +352,55 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+
+            <div className="sm:hidden space-y-3">
+              {initialData.submissionHistoryWithTitles.map((submission) => (
+                <div
+                  key={submission.id}
+                  onClick={() => handleSubmissionClick(submission)}
+                  className="bg-white/5 dark:bg-black/10 rounded-lg p-4 border border-white/20 dark:border-white/10 hover:bg-white/10 dark:hover:bg-black/20 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <h4 className="text-foreground font-medium text-sm flex-1">{submission.missions.title}</h4>
+                    {submission.status === "approved" ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/20 text-primary whitespace-nowrap">
+                        +{submission.points_awarded}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 whitespace-nowrap">
+                        {submission.status === "pending" ? "Pending" : submission.status}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">{formatDate(submission.created_at)}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleSubmissionClick(submission)
+                        }}
+                        className="h-8 w-8 p-0 hover:bg-white/10 dark:hover:bg-black/20"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Link href={`/mission/${submission.mission_id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-8 w-8 p-0 hover:bg-white/10 dark:hover:bg-black/20"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

@@ -6,59 +6,65 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
-  try {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-            supabaseResponse = NextResponse.next({
-              request,
-            })
-            cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
-          },
+  // With Fluid compute, don't put this client in a global environment variable.
+  // Always create a new one on each request.
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
         },
       },
-    )
+    },
+  )
 
-    // This prevents session timeout issues
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
+  // Do not run code between createServerClient and supabase.auth.getUser().
+  // A simple mistake could make it very hard to debug issues with users being
+  // randomly logged out.
 
-    if (sessionError) {
-      console.error("[v0] Session refresh error:", sessionError)
-      // Continue anyway - don't block the request
-    }
+  // IMPORTANT: If you remove getUser() and you use server-side rendering
+  // with the Supabase client, your users may be randomly logged out.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    const user = session?.user ?? null
+  const protectedRoutes = ["/account", "/mission", "/leaderboard", "/admin"]
+  const authRoutes = ["/auth/login", "/auth/sign-up"]
 
-    const protectedRoutes = ["/account", "/mission", "/leaderboard", "/admin"]
-    const authRoutes = ["/auth/login", "/auth/sign-up"]
+  const isProtectedRoute = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
+  const isAuthRoute = authRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
 
-    const isProtectedRoute = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
-    const isAuthRoute = authRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
-
-    if (!user && isProtectedRoute) {
-      const redirectUrl = new URL("/auth/login", request.url)
-      redirectUrl.searchParams.set("redirectTo", request.nextUrl.pathname)
-      return NextResponse.redirect(redirectUrl)
-    }
-
-    if (user && isAuthRoute) {
-      return NextResponse.redirect(new URL("/", request.url))
-    }
-
-    return supabaseResponse
-  } catch (error) {
-    console.error("[v0] Middleware error:", error)
-    // Return the response without blocking the request
-    return supabaseResponse
+  if (!user && isProtectedRoute) {
+    const redirectUrl = new URL("/auth/login", request.url)
+    redirectUrl.searchParams.set("redirectTo", request.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
   }
+
+  if (user && isAuthRoute) {
+    return NextResponse.redirect(new URL("/", request.url))
+  }
+
+  // IMPORTANT: You *must* return the supabaseResponse object as it is.
+  // If you're creating a new response object with NextResponse.next() make sure to:
+  // 1. Pass the request in it, like so:
+  //    const myNewResponse = NextResponse.next({ request })
+  // 2. Copy over the cookies, like so:
+  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
+  // 3. Change the myNewResponse object to fit your needs, but avoid changing
+  //    the cookies!
+  // 4. Finally:
+  //    return myNewResponse
+  // If this is not done, you may be causing the browser and server to go out
+  // of sync and terminate the user's session prematurely!
+
+  return supabaseResponse
 }

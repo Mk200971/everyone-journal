@@ -4,6 +4,7 @@ import Link from "next/link"
 import { Trophy } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Navbar } from "@/components/navbar"
+import { getAvatarColor } from "@/lib/utils"
 
 const getMedalEmoji = (rank: number) => {
   switch (rank) {
@@ -28,7 +29,9 @@ const getRowBackground = (rank: number) => {
 export default async function LeaderboardPage() {
   const supabase = await createClient()
 
-  const { data: users, error } = await supabase.rpc("get_leaderboard")
+  const USERS_PER_PAGE = 50
+
+  const { data: users, error } = await supabase.rpc("get_leaderboard").range(0, USERS_PER_PAGE - 1)
 
   if (error) {
     console.error("Error fetching leaderboard:", error)
@@ -93,8 +96,8 @@ export default async function LeaderboardPage() {
                                   : "ring-primary/30 h-14 w-14 sm:h-16 sm:w-16"
                               }`}
                             >
-                              <AvatarImage src={user.avatar_url || "/placeholder.svg"} alt={user.name} />
-                              <AvatarFallback className="bg-primary/20 text-foreground font-bold text-lg">
+                              <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
+                              <AvatarFallback className={getAvatarColor(user.id, user.name)}>
                                 {user.name
                                   .split(" ")
                                   .map((n) => n[0])
@@ -194,8 +197,8 @@ export default async function LeaderboardPage() {
 
                           <Link href={`/user/${user.id}`} className="flex-shrink-0">
                             <Avatar className="h-10 w-10 sm:h-12 sm:w-12 ring-2 ring-white/10 hover:ring-primary/40 transition-all duration-200 cursor-pointer">
-                              <AvatarImage src={user.avatar_url || "/placeholder.svg"} alt={user.name} />
-                              <AvatarFallback className="bg-primary/20 text-foreground font-semibold text-sm">
+                              <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
+                              <AvatarFallback className={getAvatarColor(user.id, user.name)}>
                                 {user.name
                                   .split(" ")
                                   .map((n) => n[0])

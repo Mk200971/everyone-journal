@@ -9,6 +9,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect } from "react"
+import { getAvatarColor } from "@/lib/utils"
 
 interface Submission {
   id: string
@@ -41,18 +42,29 @@ interface DiscoverClientProps {
     missions: Mission[]
     profiles: Profile[]
   }
-  currentUserId: string | null
 }
 
-export function DiscoverClient({ initialData, currentUserId }: DiscoverClientProps) {
+export function DiscoverClient({ initialData }: DiscoverClientProps) {
   const [selectedType, setSelectedType] = useState<string>("All")
   const [likes, setLikes] = useState<Record<string, number>>({})
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set())
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const supabase = createClient()
 
   // Create lookup maps
   const missionsMap = useMemo(() => new Map(initialData.missions.map((m) => [m.id, m])), [initialData.missions])
   const profilesMap = useMemo(() => new Map(initialData.profiles.map((p) => [p.id, p])), [initialData.profiles])
+
+  // Get current user
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      setCurrentUserId(user?.id || null)
+    }
+    getCurrentUser()
+  }, [supabase])
 
   // Fetch likes for all submissions
   useEffect(() => {
@@ -233,8 +245,8 @@ export function DiscoverClient({ initialData, currentUserId }: DiscoverClientPro
                 <div className="flex items-start gap-3">
                   <Link href={`/user/${submission.user_id}`}>
                     <Avatar className="w-10 h-10 sm:w-12 sm:h-12 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                      <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={profile?.name || "User"} />
-                      <AvatarFallback className="bg-primary/20 text-primary text-sm">
+                      <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.name || "User"} />
+                      <AvatarFallback className={getAvatarColor(submission.user_id, profile?.name || "User")}>
                         {profile?.name
                           ?.split(" ")
                           .map((n) => n[0])

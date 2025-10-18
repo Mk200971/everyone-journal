@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache"
 import { Navbar } from "@/components/navbar"
 import { LikeButton } from "@/components/like-button"
 import { ImageViewer } from "@/components/image-viewer"
+import { getAvatarColor } from "@/lib/utils"
 
 interface ActivityItem {
   id: string
@@ -19,6 +20,9 @@ interface ActivityItem {
   user_avatar?: string
   user_id?: string // Added user_id to enable profile linking
   mission_title?: string
+  mission_type?: string
+  mission_number?: number
+  mission_points_value?: number
   points?: number
   created_at: string
   mission_id?: string
@@ -33,7 +37,7 @@ interface ActivityItem {
   profile_changes?: string[]
 }
 
-async function getRecentActivity(): Promise<ActivityItem[]> {
+async function getRecentActivity(page: number): Promise<ActivityItem[]> {
   const cookieStore = await cookies()
 
   const supabase = createServerClient(
@@ -61,25 +65,15 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     data: { user },
   } = await supabase.auth.getUser()
 
-  console.log("[v0] Activity page - User authenticated:", !!user, user?.id)
+  const ITEMS_PER_PAGE = 20
+  const startRange = (page - 1) * ITEMS_PER_PAGE
+  const endRange = startRange + ITEMS_PER_PAGE - 1
 
   const { data: submissions, error: submissionsError } = await supabase
     .from("submissions")
-    .select(`
-      id,
-      created_at,
-      status,
-      points_awarded,
-      text_submission,
-      media_url,
-      user_id,
-      mission_id,
-      answers
-    `)
+    .select("id, created_at, status, points_awarded, text_submission, media_url, user_id, mission_id, answers")
     .order("created_at", { ascending: false })
-    .limit(20)
-
-  console.log("[v0] Activity submissions fetched:", submissions?.length || 0, "Error:", submissionsError)
+    .range(startRange, endRange)
 
   const { data: profileActivities, error: profileActivitiesError } = await supabase
     .from("profile_activities")
@@ -88,23 +82,20 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     .order("created_at", { ascending: false })
     .limit(10)
 
-  console.log("[v0] Profile activities fetched:", profileActivities?.length || 0, "Error:", profileActivitiesError)
-
   if (!submissions || submissions.length === 0) {
     return []
   }
 
   const userIds = [...new Set(submissions.map((s) => s.user_id))]
-
-  if (profileActivities && profileActivities.length > 0) {
-    const profileUserIds = profileActivities.map((a) => a.user_id)
-    userIds.push(...profileUserIds)
-  }
-
-  const { data: profiles } = await supabase.from("profiles").select("id, name, avatar_url").in("id", userIds)
-
   const missionIds = [...new Set(submissions.map((s) => s.mission_id))]
-  const { data: missions } = await supabase.from("missions").select("id, title, submission_schema").in("id", missionIds)
+
+  const [{ data: profiles }, { data: missions }] = await Promise.all([
+    supabase.from("profiles").select("id, name, avatar_url").in("id", userIds),
+    supabase
+      .from("missions")
+      .select("id, title, submission_schema, type, mission_number, points_value")
+      .in("id", missionIds),
+  ])
 
   const profilesMap = new Map(profiles?.map((p) => [p.id, p]) || [])
   const missionsMap = new Map(missions?.map((m) => [m.id, m]) || [])
@@ -113,14 +104,8 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
 
   const { data: likesData, error: likesError } = await supabase
     .from("likes")
-    .select(`
-      submission_id, 
-      user_id,
-      profiles!inner(name, avatar_url)
-    `)
+    .select("submission_id, user_id, profiles!inner(name, avatar_url)")
     .in("submission_id", submissionIds)
-
-  console.log("[v0] Likes data fetched:", likesData?.length || 0, "Error:", likesError)
 
   const likesCount =
     likesData?.reduce(
@@ -151,8 +136,6 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     likesData?.filter((like) => like.user_id === user?.id).map((like) => like.submission_id) || [],
   )
 
-  console.log("[v0] User likes:", Array.from(userLikes))
-
   const { data: newUsers } = await supabase
     .from("profiles")
     .select("id, name, avatar_url, created_at")
@@ -165,7 +148,7 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
     const profile = profilesMap.get(submission.user_id)
     const mission = missionsMap.get(submission.mission_id)
 
-    if (!profile || !mission) return // Skip if we can't find related data
+    if (!profile || !mission) return
 
     if (submission.status === "approved") {
       activities.push({
@@ -173,8 +156,11 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         type: "mission_completed",
         user_name: profile.name || "Anonymous",
         user_avatar: profile.avatar_url,
-        user_id: submission.user_id, // Include user_id for profile linking
+        user_id: submission.user_id,
         mission_title: mission.title,
+        mission_type: mission.type,
+        mission_number: mission.mission_number,
+        mission_points_value: mission.points_value,
         points: submission.points_awarded,
         created_at: submission.created_at,
         mission_id: mission.id,
@@ -193,8 +179,11 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         type: "mission_submitted",
         user_name: profile.name || "Anonymous",
         user_avatar: profile.avatar_url,
-        user_id: submission.user_id, // Include user_id for profile linking
+        user_id: submission.user_id,
         mission_title: mission.title,
+        mission_type: mission.type,
+        mission_number: mission.mission_number,
+        mission_points_value: mission.points_value,
         created_at: submission.created_at,
         mission_id: mission.id,
         submission_id: submission.id,
@@ -234,7 +223,7 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
         type: "user_joined",
         user_name: user.name || "New Member",
         user_avatar: user.avatar_url,
-        user_id: user.id, // Include user_id for profile linking
+        user_id: user.id,
         created_at: user.created_at,
       })
     })
@@ -243,7 +232,6 @@ async function getRecentActivity(): Promise<ActivityItem[]> {
   const finalActivities = activities
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 30)
-  console.log("[v0] Final activities count:", finalActivities.length)
 
   return finalActivities
 }
@@ -268,16 +256,13 @@ async function getCommunityStats() {
     },
   )
 
-  // Get total approved submissions (activities completed by community)
   const { count: totalCompletedActivities } = await supabase
     .from("submissions")
     .select("*", { count: "exact", head: true })
     .eq("status", "approved")
 
-  // Get total community members
   const { count: totalCommunityMembers } = await supabase.from("profiles").select("*", { count: "exact", head: true })
 
-  // Get combined EP earned by community
   const { data: profilesWithPoints } = await supabase.from("profiles").select("total_points")
 
   const totalCommunityPoints = profilesWithPoints?.reduce((sum, profile) => sum + (profile.total_points || 0), 0) || 0
@@ -330,51 +315,115 @@ async function toggleLike(submissionId: string, userHasLiked: boolean) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) {
-    console.log("[v0] No user found for like action")
     return { success: false, error: "User not authenticated" }
   }
-
-  console.log("[v0] Like action - User:", user.id, "Submission:", submissionId, "Currently liked:", userHasLiked)
 
   try {
     if (userHasLiked) {
       const { error } = await supabase.from("likes").delete().eq("user_id", user.id).eq("submission_id", submissionId)
-      console.log("[v0] Unlike result:", error ? "Error: " + error.message : "Success")
       if (error) throw error
     } else {
       const { error } = await supabase.from("likes").insert({ user_id: user.id, submission_id: submissionId })
-      console.log("[v0] Like result:", error ? "Error: " + error.message : "Success")
       if (error) throw error
     }
 
     revalidatePath("/activity")
     return { success: true }
   } catch (error) {
-    console.log("[v0] Like action error:", error)
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 
 function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissionSchema: any }) {
-  if (!answers || !submissionSchema || !submissionSchema.questions) {
+  if (!answers || typeof answers !== "object" || Object.keys(answers).length === 0) {
     return null
   }
 
-  const questions = submissionSchema.questions
+  const schemaQuestions = submissionSchema?.questions || submissionSchema?.fields || []
+
+  if (!schemaQuestions || schemaQuestions.length === 0) {
+    const answerKeys = Object.keys(answers)
+    return (
+      <div className="space-y-3">
+        {answerKeys.map((key) => {
+          const answer = answers[key]
+          if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
+
+          let questionTypeLabel = "Response"
+          if (key.toLowerCase().includes("pop quiz")) {
+            questionTypeLabel = "Pop Quiz Question"
+          } else if (key.toLowerCase().includes("reflection")) {
+            questionTypeLabel = "Article Reflection"
+          }
+
+          const numberMatch = key.match(/(\d+)\/(\d+)/)
+          const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
+
+          return (
+            <div key={key} className="bg-muted/30 rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-primary">
+                  {questionTypeLabel} {questionNumber}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-foreground">{key}</p>
+              <div className="bg-background/50 rounded-md p-2 border border-muted/50">
+                <p className="text-xs text-muted-foreground mb-1">
+                  {questionTypeLabel.includes("Quiz") ? "Selected:" : "Response:"}
+                </p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">
+                  {typeof answer === "string" ? answer : JSON.stringify(answer, null, 2)}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
-    <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2">
-      {questions.map((question: any, index: number) => {
-        const answer = answers[question.id] || answers[`question_${index}`] || answers[question.label]
+    <div className="space-y-3">
+      {schemaQuestions.map((question: any, index: number) => {
+        const fieldName = question.field_name || question.name || question.label
+        const answer = answers[fieldName]
 
-        if (!answer) return null
+        if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
+
+        let questionTypeLabel = "Response"
+        if (fieldName.toLowerCase().includes("pop quiz")) {
+          questionTypeLabel = "Pop Quiz Question"
+        } else if (fieldName.toLowerCase().includes("reflection")) {
+          questionTypeLabel = "Article Reflection"
+        } else if (fieldName.toLowerCase().includes("activity")) {
+          questionTypeLabel = "Activity Reflection"
+        }
+
+        const numberMatch = fieldName.match(/(\d+)\/(\d+)/)
+        const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
+
+        const questionHelperText = question.helperText || question.helper_text || question.description
 
         return (
-          <div key={question.id || index} className="border-b border-muted/30 last:border-b-0 pb-2 last:pb-0">
-            <p className="font-medium text-muted-foreground text-xs mb-1">
-              {question.label || question.question || `Question ${index + 1}`}
-            </p>
-            <p className="text-foreground">{typeof answer === "string" ? answer : JSON.stringify(answer)}</p>
+          <div key={fieldName} className="bg-muted/30 rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-primary">
+                {questionTypeLabel} {questionNumber}
+              </span>
+            </div>
+
+            {questionHelperText && questionHelperText !== question.label && (
+              <p className="text-sm text-muted-foreground">{questionHelperText}</p>
+            )}
+
+            <div className="bg-background/50 rounded-md p-2 border border-muted/50">
+              <p className="text-xs text-muted-foreground mb-1">
+                {questionTypeLabel.includes("Quiz") ? "Selected:" : "Response:"}
+              </p>
+              <p className="text-sm text-foreground whitespace-pre-wrap">
+                {typeof answer === "string" ? answer : JSON.stringify(answer, null, 2)}
+              </p>
+            </div>
           </div>
         )
       })}
@@ -472,10 +521,24 @@ function ActivityDescription({ activity }: { activity: ActivityItem }) {
             {activity.type === "mission_completed" ? "completed" : "submitted"}{" "}
             {activity.mission_id ? (
               <Link href={`/mission/${activity.mission_id}`} className="text-primary hover:underline font-medium">
+                {activity.mission_type && activity.mission_number && (
+                  <>
+                    {activity.mission_type} #{Math.floor(activity.mission_number)} |{" "}
+                  </>
+                )}
                 {activity.mission_title}
+                {activity.mission_points_value && <> | +{activity.mission_points_value} EP</>}
               </Link>
             ) : (
-              <span className="font-medium">{activity.mission_title}</span>
+              <span className="font-medium text-primary">
+                {activity.mission_type && activity.mission_number && (
+                  <>
+                    {activity.mission_type} #{Math.floor(activity.mission_number)} |{" "}
+                  </>
+                )}
+                {activity.mission_title}
+                {activity.mission_points_value && <> | +{activity.mission_points_value} EP</>}
+              </span>
             )}
           </p>
 
@@ -594,14 +657,26 @@ function ActivityFeed({ activities }: { activities: ActivityItem[] }) {
               {activity.user_id ? (
                 <Link href={`/user/${activity.user_id}`}>
                   <Avatar className="h-10 w-10 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                    <AvatarImage src={activity.user_avatar || "/placeholder.svg"} />
-                    <AvatarFallback>{activity.user_name.charAt(0).toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={activity.user_avatar || undefined} />
+                    <AvatarFallback className={getAvatarColor(activity.user_id, activity.user_name)}>
+                      {activity.user_name
+                        ?.split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase() || "U"}
+                    </AvatarFallback>
                   </Avatar>
                 </Link>
               ) : (
                 <Avatar className="h-10 w-10 flex-shrink-0">
-                  <AvatarImage src={activity.user_avatar || "/placeholder.svg"} />
-                  <AvatarFallback>{activity.user_name.charAt(0).toUpperCase()}</AvatarFallback>
+                  <AvatarImage src={activity.user_avatar || undefined} />
+                  <AvatarFallback className={getAvatarColor(undefined, activity.user_name)}>
+                    {activity.user_name
+                      ?.split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .toUpperCase() || "U"}
+                  </AvatarFallback>
                 </Avatar>
               )}
 
@@ -675,7 +750,7 @@ function ActivityStats({
 }
 
 export default async function ActivityPage() {
-  const [activities, communityStats] = await Promise.all([getRecentActivity(), getCommunityStats()])
+  const [activities, communityStats] = await Promise.all([getRecentActivity(1), getCommunityStats()])
 
   return (
     <div className="min-h-screen relative overflow-hidden">

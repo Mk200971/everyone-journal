@@ -8,6 +8,7 @@ import { Trophy, MapPin, Briefcase, Calendar, ArrowLeft, Users, Target, Globe } 
 import Link from "next/link"
 import { Navbar } from "@/components/navbar"
 import { notFound } from "next/navigation"
+import { getAvatarColor } from "@/lib/utils"
 
 interface UserProfile {
   id: string
@@ -72,34 +73,27 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
 
   const { data: submissions, error: submissionsError } = await supabase
     .from("submissions")
-    .select("id, points_awarded, created_at, status, mission_id")
+    .select(`
+      id, 
+      points_awarded, 
+      created_at, 
+      status, 
+      mission_id,
+      missions!inner(id, title)
+    `)
     .eq("user_id", userId)
-    .eq("status", "approved")
     .order("created_at", { ascending: false })
 
   console.log("[v0] User submissions:", submissions?.length || 0)
   console.log("[v0] Submissions error:", submissionsError)
 
-  let missionsData: any[] = []
-  if (submissions && submissions.length > 0) {
-    const missionIds = submissions.map((s) => s.mission_id)
-    const { data: missions } = await supabase.from("missions").select("id, title").in("id", missionIds)
-
-    missionsData = missions || []
-    console.log("[v0] Fetched missions:", missionsData.length)
-  }
-
   const totalPoints = profile.total_points || 0
   const completedMissions = submissions?.length || 0
 
-  const { data: allUsers } = await supabase
-    .from("profiles")
-    .select("id, total_points")
-    .order("total_points", { ascending: false })
+  const { data: rankData } = await supabase.rpc("get_user_rank", { user_id_param: userId })
+  const userRank = rankData || 0
 
-  console.log("[v0] All users for ranking:", allUsers?.slice(0, 5))
-
-  const userRank = allUsers?.findIndex((user) => user.id === userId) + 1 || 0
+  console.log("[v0] All users for ranking:", rankData)
 
   console.log("[v0] User rank calculated:", userRank)
 
@@ -113,17 +107,14 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
   console.log("[v0] Final user profile:", userProfile)
 
   const userSubmissions: UserSubmission[] =
-    submissions?.map((sub) => {
-      const mission = missionsData.find((m) => m.id === sub.mission_id)
-      return {
-        id: sub.id,
-        mission_title: mission?.title || "Unknown Mission",
-        mission_id: sub.mission_id,
-        points_awarded: sub.points_awarded || 0,
-        created_at: sub.created_at,
-        status: sub.status,
-      }
-    }) || []
+    submissions?.map((sub: any) => ({
+      id: sub.id,
+      mission_title: sub.missions?.title || "Unknown Mission",
+      mission_id: sub.mission_id,
+      points_awarded: sub.points_awarded || 0,
+      created_at: sub.created_at,
+      status: sub.status,
+    })) || []
 
   return { profile: userProfile, submissions: userSubmissions }
 }
@@ -175,8 +166,10 @@ export default async function UserProfilePage({ params }: { params: { id: string
               <CardContent className="p-6">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
                   <Avatar className="h-24 w-24 flex-shrink-0">
-                    <AvatarImage src={profile.avatar_url || "/placeholder.svg"} />
-                    <AvatarFallback className="text-2xl">{profile.name.charAt(0).toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={profile.avatar_url || undefined} />
+                    <AvatarFallback className={`text-2xl ${getAvatarColor(profile.id, profile.name)}`}>
+                      {profile.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
 
                   <div className="flex-1 min-w-0">
@@ -218,7 +211,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
                     {profile.customer_obsession && (
                       <div className="mb-4 p-4 bg-muted/50 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
-                          <Target className="h-4 w-4 text-primary" />
+                          <Target className="h-4 w-4 text-primary mx-auto mb-2" />
                           <h3 className="font-medium text-sm">Customer Obsession Belief</h3>
                         </div>
                         <div className="flex items-center gap-3">
@@ -275,7 +268,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="h-5 w-5" />
-                  Activities Submitted
+                  Activities by {profile.name}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -295,10 +288,32 @@ export default async function UserProfilePage({ params }: { params: { id: string
                             {formatDate(submission.created_at)}
                           </p>
                         </div>
-                        <Badge variant="secondary">
-                          {submission.status === "approved" ? "+" : ""}
-                          {submission.points_awarded} EP
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {submission.status === "approved" && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                              Approved
+                            </Badge>
+                          )}
+                          {submission.status === "pending" && (
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                              Pending
+                            </Badge>
+                          )}
+                          {submission.status === "rejected" && (
+                            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+                              Rejected
+                            </Badge>
+                          )}
+                          {submission.status === "draft" && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                              Draft
+                            </Badge>
+                          )}
+                          <Badge variant="secondary">
+                            {submission.status === "approved" ? "+" : ""}
+                            {submission.points_awarded} EP
+                          </Badge>
+                        </div>
                       </div>
                     ))}
                   </div>
