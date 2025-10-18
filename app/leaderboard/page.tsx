@@ -5,7 +5,6 @@ import { Trophy } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Navbar } from "@/components/navbar"
 import { getAvatarColor } from "@/lib/utils"
-import { redirect } from "next/navigation"
 
 const getMedalEmoji = (rank: number) => {
   switch (rank) {
@@ -32,15 +31,9 @@ export default async function LeaderboardPage() {
 
   const {
     data: { user },
-    error: authError,
   } = await supabase.auth.getUser()
 
-  console.log("[v0] Leaderboard - User auth check:", user ? "authenticated" : "not authenticated", user?.id)
-
-  if (authError || !user) {
-    console.log("[v0] Leaderboard - Auth error, redirecting to login:", authError?.message)
-    redirect("/auth/login?redirectTo=/leaderboard")
-  }
+  console.log("[v0] Leaderboard - User:", user ? "authenticated" : "not authenticated", user?.id)
 
   const USERS_PER_PAGE = 50
 
