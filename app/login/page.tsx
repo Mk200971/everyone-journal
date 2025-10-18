@@ -34,6 +34,11 @@ export default function Page() {
         },
       })
       if (error) throw error
+
+      router.refresh()
+
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       router.push("/")
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
