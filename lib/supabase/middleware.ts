@@ -2,8 +2,10 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
+  const response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
   })
 
   const supabase = createServerClient(
@@ -15,32 +17,18 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value)
+            response.cookies.set(name, value, options)
           })
-          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
         },
       },
     },
   )
 
-  let user = null
-  let retries = 2
-
-  while (retries > 0 && !user) {
-    try {
-      const { data } = await supabase.auth.getUser()
-      user = data.user
-      break
-    } catch (error) {
-      console.error("[v0] Middleware auth fetch error, retries left:", retries - 1, error)
-      retries--
-      if (retries > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-      }
-    }
-  }
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   const protectedRoutes = ["/account", "/mission", "/leaderboard", "/admin"]
   const authRoutes = ["/auth/login", "/auth/sign-up"]
@@ -58,5 +46,5 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url))
   }
 
-  return supabaseResponse
+  return response
 }
