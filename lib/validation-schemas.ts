@@ -150,9 +150,11 @@ export function validateFormData<T>(formData: FormData, schema: z.ZodSchema<T>):
       } catch {
         data[key] = value
       }
-    }
-    // Handle numeric values
-    else if (typeof value === "string" && !Number.isNaN(Number(value)) && key.includes("_value")) {
+    } else if (
+      typeof value === "string" &&
+      !Number.isNaN(Number(value)) &&
+      (key.includes("_value") || key.includes("_order") || key.includes("_number") || key.includes("max_submissions"))
+    ) {
       data[key] = Number(value)
     }
     // Handle regular strings

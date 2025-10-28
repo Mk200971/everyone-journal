@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
-import type { Mission, Profile, Submission, Resource, NoticeboardItem, JsonValue } from "@/types/database"
+import type { Mission, Profile, Submission, JsonValue } from "@/types/database"
 import { logger } from "@/lib/logger"
 import {
   createMissionSchema,
@@ -20,76 +20,21 @@ import {
   paginationSchema,
   validateFormData,
 } from "@/lib/validation-schemas"
+import {
+  ActionErrorCode,
+  type SubmissionResponse,
+  type ProfileUpdateResponse,
+  type SignOutResponse,
+  type AvatarUpdateResponse,
+  type ExportDataResponse,
+  type CommunityActivityResponse,
+  type DraftResponse,
+  type UpdateSubmissionResponse,
+  type SubmitDraftResponse,
+} from "@/lib/action-types"
 
-export enum ActionErrorCode {
-  AUTH_ERROR = "AUTH_ERROR",
-  VALIDATION_ERROR = "VALIDATION_ERROR",
-  DATABASE_ERROR = "DATABASE_ERROR",
-  STORAGE_ERROR = "STORAGE_ERROR",
-  NOT_FOUND = "NOT_FOUND",
-  PERMISSION_DENIED = "PERMISSION_DENIED",
-  RATE_LIMIT = "RATE_LIMIT",
-  UNKNOWN_ERROR = "UNKNOWN_ERROR",
-}
-
-type PaginationMetadata = {
-  page: number
-  limit: number
-  total: number
-  hasMore: boolean
-}
-
-type ActionResponse<T = void> =
-  | {
-      success: true
-      data: T
-      pagination?: PaginationMetadata
-    }
-  | {
-      success: false
-      error: string
-      errorCode: ActionErrorCode
-    }
-
-type SubmissionResponse = ActionResponse<void>
-type ProfileUpdateResponse = ActionResponse<void>
-type SignOutResponse = ActionResponse<{ redirectTo: string }>
-type MissionResponse = ActionResponse<{ id: string }>
-type AvatarUpdateResponse = ActionResponse<{ avatar_url: string }>
-type ExportDataResponse = ActionResponse<{
-  missions: Mission[]
-  profiles: Profile[]
-  submissions: Array<
-    Submission & {
-      user_name: string
-      user_email: string
-      mission_title: string
-      answers_raw: string | null
-      [key: string]: JsonValue
-    }
-  >
-  resources: Resource[]
-  noticeboard_items: NoticeboardItem[]
-}>
-
-type CommunityActivityResponse = ActionResponse<
-  Array<{
-    id: string
-    created_at: string
-    points_awarded: number
-    user_name: string
-    mission_title: string
-    mission_id?: string
-    user_avatar_url: string | null
-    user_id: string
-    status: string
-    type: "submission" | "profile_update"
-    changed_fields?: string[]
-  }>
->
-type DraftResponse = ActionResponse<void>
-type UpdateSubmissionResponse = ActionResponse<{ wasApproved: boolean }>
-type SubmitDraftResponse = ActionResponse<{ missionId: string }>
+// FIX: handleActionError is undeclared. Import it from "@/lib/utils" - DEFINED BELOW
+// import { handleActionError } from "@/lib/utils"
 
 function handleActionError(
   error: unknown,
@@ -161,6 +106,16 @@ function handleActionError(
     errorCode: ActionErrorCode.UNKNOWN_ERROR,
   }
 }
+
+type PaginationMetadata = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
+// REMOVED: Type definitions for ActionResponse and its variants were moved to lib/action-types.ts
+// This is to fix a "use server" export error where these types were not being exported correctly.
 
 /**
  * Verifies admin authentication and returns authorized client

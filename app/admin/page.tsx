@@ -162,12 +162,43 @@ export default function AdminPage() {
   const handleCreateMission = async (formData: FormData) => {
     startCreateTransition(async () => {
       try {
-        console.log("[v0] Starting mission creation...")
+        // Clean up resource_id and quote_id - convert "none" to null
+        const resourceId = formData.get("resource_id") as string
+        const quoteId = formData.get("quote_id") as string
+
+        if (resourceId === "none" || !resourceId) {
+          formData.delete("resource_id")
+        }
+
+        if (quoteId === "none" || !quoteId) {
+          formData.delete("quote_id")
+        }
+
+        // Convert due_date to ISO datetime format if provided
+        const dueDate = formData.get("due_date") as string
+        if (dueDate) {
+          const dateObj = new Date(dueDate)
+          formData.set("due_date", dateObj.toISOString())
+        } else {
+          formData.delete("due_date")
+        }
+
+        // Add submission schema if exists
         if (createMissionSchema) {
           formData.set("submission_schema", JSON.stringify(createMissionSchema))
         }
-        await createMission(formData)
-        console.log("[v0] Mission creation successful")
+
+        const result = await createMission(formData)
+
+        if (!result.success) {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to create mission",
+            variant: "destructive",
+          })
+          return
+        }
+
         setIsAddDialogOpen(false)
         setCreateMissionSchema(null)
         await fetchMissions()
@@ -176,7 +207,6 @@ export default function AdminPage() {
           description: "The mission has been created successfully.",
         })
       } catch (error) {
-        console.error("[v0] Failed to create mission:", error)
         toast({
           title: "Creation Failed",
           description: `Failed to create mission: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -189,11 +219,43 @@ export default function AdminPage() {
   const handleUpdateMission = async (formData: FormData) => {
     startUpdateTransition(async () => {
       try {
+        // Clean up resource_id and quote_id - convert "none" to null
+        const resourceId = formData.get("resource_id") as string
+        const quoteId = formData.get("quote_id") as string
+
+        if (resourceId === "none" || !resourceId) {
+          formData.delete("resource_id")
+        }
+
+        if (quoteId === "none" || !quoteId) {
+          formData.delete("quote_id")
+        }
+
+        // Convert due_date to ISO datetime format if provided
+        const dueDate = formData.get("due_date") as string
+        if (dueDate) {
+          const dateObj = new Date(dueDate)
+          formData.set("due_date", dateObj.toISOString())
+        } else {
+          formData.delete("due_date")
+        }
+
+        // Add submission schema if exists
         if (editMissionSchema !== undefined) {
           formData.set("submission_schema", editMissionSchema ? JSON.stringify(editMissionSchema) : "")
         }
-        await updateMission(formData)
-        console.log("[v0] Mission updated successfully")
+
+        const result = await updateMission(formData)
+
+        if (!result.success) {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to update mission",
+            variant: "destructive",
+          })
+          return
+        }
+
         setIsEditDialogOpen(false)
         setEditingMission(null)
         setEditMissionSchema(null)
@@ -203,7 +265,6 @@ export default function AdminPage() {
           description: "The mission has been updated successfully.",
         })
       } catch (error) {
-        console.error("[v0] Failed to update mission:", error)
         toast({
           title: "Update Failed",
           description: `Failed to update mission: ${error instanceof Error ? error.message : "Unknown error"}`,
