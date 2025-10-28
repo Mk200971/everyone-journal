@@ -2,6 +2,8 @@
 
 import type React from "react"
 import { toast } from "@/components/ui/use-toast"
+import { AdminQuotesSkeleton } from "@/components/skeleton-loaders"
+import { logger } from "@/lib/logger"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -59,7 +61,7 @@ export default function AdminQuotesPage() {
       .order("display_order", { ascending: true })
 
     if (error) {
-      console.error("Error fetching quotes:", error)
+      logger.error("Failed to fetch quotes", { error: error.message })
     } else {
       setQuotes(data || [])
     }
@@ -77,7 +79,7 @@ export default function AdminQuotesPage() {
       const { data, error } = await supabase.storage.from("quotes-images").upload(fileName, file)
 
       if (error) {
-        console.error("Error uploading file:", error)
+        logger.error("Failed to upload quote image", { error: error.message, fileName })
         return null
       }
 
@@ -87,7 +89,7 @@ export default function AdminQuotesPage() {
 
       return publicUrl
     } catch (error) {
-      console.error("Upload error:", error)
+      logger.error("Quote image upload error", { error: error instanceof Error ? error.message : String(error) })
       return null
     } finally {
       setUploading(false)
@@ -136,14 +138,14 @@ export default function AdminQuotesPage() {
       const { error } = await supabase.from("noticeboard_items").update(formData).eq("id", editingQuote.id)
 
       if (error) {
-        console.error("Error updating quote:", error)
+        logger.error("Failed to update quote", { error: error.message, quoteId: editingQuote.id })
         return
       }
     } else {
       const { error } = await supabase.from("noticeboard_items").insert([formData])
 
       if (error) {
-        console.error("Error creating quote:", error)
+        logger.error("Failed to create quote", { error: error.message })
         return
       }
     }
@@ -186,7 +188,7 @@ export default function AdminQuotesPage() {
     const { error } = await supabase.from("noticeboard_items").delete().eq("id", id)
 
     if (error) {
-      console.error("Error deleting quote:", error)
+      logger.error("Failed to delete quote", { error: error.message, quoteId: id })
     } else {
       fetchQuotes()
     }
@@ -209,7 +211,38 @@ export default function AdminQuotesPage() {
   }
 
   if (loading) {
-    return <div className="p-6">Loading...</div>
+    return (
+      <div className="min-h-screen relative overflow-hidden">
+        <header className="sticky top-0 z-50 py-3 sm:py-6 mb-6 sm:mb-12 bg-white/10 dark:bg-black/20 backdrop-blur-xl border-b border-white/20 dark:border-white/10">
+          <div className="container mx-auto px-3 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <Link href="/admin">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 sm:h-12 sm:w-12 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10"
+                  >
+                    <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6 text-foreground" />
+                  </Button>
+                </Link>
+                <Image
+                  src="/everyone-logo.svg"
+                  alt="EVERYONE"
+                  width={180}
+                  height={40}
+                  className="w-28 sm:w-40 lg:w-fit h-10 sm:h-14 lg:h-16"
+                  priority
+                />
+              </div>
+            </div>
+          </div>
+        </header>
+        <div className="container mx-auto p-6">
+          <AdminQuotesSkeleton />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -365,12 +398,6 @@ export default function AdminQuotesPage() {
                               width={96}
                               height={96}
                               className="w-full h-full object-cover rounded border"
-                              onLoad={() =>
-                                console.log("[v0] Admin quote image preview loaded successfully:", formData.image_url)
-                              }
-                              onError={(e) => {
-                                console.error("[v0] Admin quote image preview failed to load:", formData.image_url, e)
-                              }}
                             />
                           </div>
                         </div>
@@ -442,10 +469,6 @@ export default function AdminQuotesPage() {
                         width={96}
                         height={96}
                         className="w-full h-full object-cover rounded"
-                        onLoad={() => console.log("[v0] Admin quote list image loaded successfully:", quote.image_url)}
-                        onError={(e) => {
-                          console.error("[v0] Admin quote list image failed to load:", quote.image_url, e)
-                        }}
                       />
                     </div>
                   )}

@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { Quote, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { QuoteCarouselSkeleton } from "@/components/skeleton-loaders"
 
 interface NoticeboardItem {
   id: string
@@ -86,13 +87,13 @@ export function QuoteCarousel({ initialQuotes = [] }: QuoteCarouselProps) {
     return () => clearInterval(interval)
   }, [quotes.length])
 
-  const goToPrevious = () => {
+  const goToPrevious = useCallback(() => {
     setCurrentIndex((prevIndex) => (prevIndex - 1 + quotes.length) % quotes.length)
-  }
+  }, [quotes.length])
 
-  const goToNext = () => {
+  const goToNext = useCallback(() => {
     setCurrentIndex((prevIndex) => (prevIndex + 1) % quotes.length)
-  }
+  }, [quotes.length])
 
   if (error) {
     return (
@@ -106,13 +107,7 @@ export function QuoteCarousel({ initialQuotes = [] }: QuoteCarouselProps) {
   }
 
   if (loading) {
-    return (
-      <Card className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 mb-6 sm:mb-8">
-        <CardContent className="p-6">
-          <div className="animate-pulse">Loading quotes...</div>
-        </CardContent>
-      </Card>
-    )
+    return <QuoteCarouselSkeleton />
   }
 
   if (quotes.length === 0) {
@@ -142,22 +137,24 @@ export function QuoteCarousel({ initialQuotes = [] }: QuoteCarouselProps) {
                 <CarouselItem key={quote.id} className={index === currentIndex ? "block" : "hidden"}>
                   <div className="pb-3 sm:pb-6">
                     <div className="max-w-5xl mx-auto">
-                      <div className="relative w-full">
+                      <div className="relative w-full" style={{ transform: "translateZ(0)" }}>
                         <div className="aspect-[3/2] rounded-lg overflow-hidden shadow-lg">
                           <Image
                             src={
                               quote.image_url || "/placeholder.svg?height=400&width=600&query=inspirational quote image"
                             }
                             alt={`Quote by ${quote.author}`}
-                            fill
-                            className="object-cover"
-                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 60vw"
-                            loading="lazy"
+                            width={1200}
+                            height={800}
+                            className="object-cover w-full h-full"
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1200px"
+                            priority={index === 0}
+                            loading={index === 0 ? "eager" : "lazy"}
+                            quality={85}
                             placeholder="blur"
                             blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
-                            onError={(e) => {
-                              // Silent fallback handling
-                            }}
+                            fetchPriority={index === 0 ? "high" : "auto"}
+                            unoptimized={false}
                           />
                         </div>
                       </div>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
 import Link from "next/link"
+import { logger } from "@/lib/logger"
 
 interface ErrorBoundaryState {
   hasError: boolean
@@ -27,8 +28,11 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error to monitoring service (e.g., Sentry)
-    console.error("[ErrorBoundary] Caught error:", error, errorInfo)
+    logger.error("Error boundary caught error", {
+      error: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+    })
 
     // In production, you would send this to your error monitoring service
     if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
@@ -102,7 +106,11 @@ function DefaultErrorFallback({ error, resetError }: { error?: Error; resetError
 // Hook for functional components to use error boundaries
 export function useErrorHandler() {
   return (error: Error, errorInfo?: { componentStack?: string }) => {
-    console.error("[useErrorHandler] Error caught:", error, errorInfo)
+    logger.error("useErrorHandler caught error", {
+      error: error.message,
+      stack: error.stack,
+      componentStack: errorInfo?.componentStack,
+    })
 
     // In production, send to error monitoring service
     if (typeof window !== "undefined" && window.location.hostname !== "localhost") {

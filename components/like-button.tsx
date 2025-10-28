@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Heart } from "lucide-react"
+import { logger } from "@/lib/logger"
 
 interface LikeButtonProps {
   submissionId: string
@@ -28,12 +29,15 @@ export function LikeButton({ submissionId, likesCount, userHasLiked, onToggleLik
         if (!result.success) {
           setOptimisticLiked(userHasLiked)
           setOptimisticCount(likesCount)
-          console.error("[v0] Like action failed:", result.error)
+          logger.error("Like action failed", { submissionId, error: result.error })
         }
       } catch (error) {
         setOptimisticLiked(userHasLiked)
         setOptimisticCount(likesCount)
-        console.error("[v0] Like action error:", error)
+        logger.error("Like action error", {
+          submissionId,
+          error: error instanceof Error ? error.message : String(error),
+        })
       }
     })
   }

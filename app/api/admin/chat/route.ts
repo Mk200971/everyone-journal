@@ -2,12 +2,15 @@ import { type NextRequest, NextResponse } from "next/server"
 import { generateText } from "ai"
 import { groq } from "@ai-sdk/groq"
 import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
 
 interface ConversationMessage {
   role: "user" | "assistant"
   content: string
   timestamp: string
 }
+
+type QueryResult = Record<string, unknown> | unknown[] | null
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,7 +68,7 @@ ${conversationContext}`
         throw new Error("Invalid query plan structure - missing intent")
       }
     } catch (parseError) {
-      console.error("Failed to parse query analysis:", queryAnalysis)
+      logger.error("Failed to parse query analysis", parseError, { metadata: { queryAnalysis } })
       queryPlan = {
         intent: "analysis",
         category: "GENERAL_INSIGHTS",
@@ -73,7 +76,7 @@ ${conversationContext}`
       }
     }
 
-    let queryResult
+    let queryResult: QueryResult
     if (queryPlan.intent === "greeting") {
       const [profilesData, missionsData, submissionsData] = await Promise.all([
         supabase.from("profiles").select("id, name, total_points").order("total_points", { ascending: false }).limit(5),
@@ -93,7 +96,6 @@ ${conversationContext}`
       }
     } else {
       if (queryPlan.query === "comprehensive_data" || !queryPlan.query) {
-        // Get comprehensive data for general insights
         const [profilesData, missionsData, submissionsData, resourcesData] = await Promise.all([
           supabase.from("profiles").select("*").order("total_points", { ascending: false }),
           supabase.from("missions").select("*").order("created_at", { ascending: false }),
@@ -126,12 +128,10 @@ ${conversationContext}`
           },
         }
       } else {
-        // Execute custom SQL query if provided
         try {
           const { data } = await supabase.rpc("execute_query", { query_text: queryPlan.query })
           queryResult = data || {}
         } catch (error) {
-          // Fallback to comprehensive data if custom query fails
           const { data } = await supabase
             .from("submissions")
             .select(`
@@ -194,7 +194,7 @@ Keep your response conversational, insightful, and under 200 words unless they a
       maxTokens: 1000,
     })
 
-    const getRecordCount = (result: any): number => {
+    const getRecordCount = (result: QueryResult): number => {
       if (!result) return 0
       if (Array.isArray(result)) return result.length
       if (typeof result === "object") return Object.keys(result).length
@@ -225,7 +225,7 @@ Keep your response conversational, insightful, and under 200 words unless they a
       },
     })
   } catch (error) {
-    console.error("Chat API error:", error)
+    logger.error("Chat API error", error)
     return NextResponse.json({ error: "Failed to process chat request" }, { status: 500 })
   }
 }

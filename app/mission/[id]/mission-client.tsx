@@ -11,7 +11,18 @@ import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { Upload, FileText, ExternalLink, ArrowLeft, CheckCircle, Plus, Trash2, Save } from "lucide-react"
+import {
+  Upload,
+  FileText,
+  ExternalLink,
+  ArrowLeft,
+  CheckCircle,
+  Plus,
+  Trash2,
+  Save,
+  Loader2,
+  AlertCircle,
+} from "lucide-react"
 import {
   submitMission,
   saveDraft,
@@ -23,6 +34,39 @@ import {
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { DynamicFormRenderer } from "@/components/dynamic-form-renderer"
+import type { JsonValue } from "type-fest" // Import JsonValue
+
+interface SubmissionSchema {
+  fields?: Array<{
+    name?: string
+    label?: string
+    type?: string
+  }>
+  [key: string]: JsonValue
+}
+
+// Assume these types are imported from your types/database.ts
+// interface Mission { ... }
+// interface Submission { ... }
+// interface Resource { ... }
+// interface Quote { ... }
+// interface User { ... }
+// interface Profile { ... }
+
+// Placeholder types for demonstration, replace with actual imports
+interface Mission {
+  id: string
+  title: string
+  description: string
+  instructions?: string
+  tips_inspiration?: string
+  image_url?: string
+  type?: string
+  points_value: number
+  max_submissions_per_user?: number
+  submission_schema?: SubmissionSchema
+  mission_number?: number
+}
 
 interface Submission {
   id: string
@@ -30,16 +74,36 @@ interface Submission {
   media_url?: string
   status: string
   created_at: string
-  answers?: any
+  answers?: Record<string, JsonValue> | null
+}
+
+interface Resource {
+  url: string
+  description: string
+}
+
+interface Quote {
+  text: string
+  author: string
+}
+
+interface User {
+  id: string
+  name: string
+}
+
+interface Profile {
+  id: string
+  bio: string
 }
 
 interface MissionClientProps {
-  mission: any
+  mission: Mission
   existingSubmissions: Submission[]
-  linkedResource: any
-  inspirationalQuote: any
-  user: any
-  profile: any // Add profile prop
+  linkedResource: Resource | null
+  inspirationalQuote: Quote | null
+  user: User
+  profile: Profile
 }
 
 export function MissionClient({
@@ -50,9 +114,6 @@ export function MissionClient({
   user,
   profile, // Destructure profile prop
 }: MissionClientProps) {
-  console.log("[v0] MissionClient - user:", user)
-  console.log("[v0] MissionClient - profile:", profile)
-
   const existingSubmissions = useMemo(
     () => initialSubmissions.filter((s) => s.status !== "draft"),
     [initialSubmissions],
@@ -62,13 +123,15 @@ export function MissionClient({
 
   const missionSchema = useMemo(() => mission.submission_schema, [mission.submission_schema])
 
-  const [submissionForms, setSubmissionForms] = useState([{ id: 1, textSubmission: "", mediaFile: null }])
+  const [submissionForms, setSubmissionForms] = useState([
+    { id: 1, textSubmission: "", mediaFile: null as File | null },
+  ])
   const [editingSubmission, setEditingSubmission] = useState<string | null>(null)
   const [editFormData, setEditFormData] = useState<{ textSubmission: string; mediaFile: File | null }>({
     textSubmission: "",
     mediaFile: null,
   })
-  const [editDynamicAnswers, setEditDynamicAnswers] = useState<any>(null)
+  const [editDynamicAnswers, setEditDynamicAnswers] = useState<Record<string, JsonValue> | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [useDynamicForm] = useState(!!mission.submission_schema)
   const [isSavingProgress, startSaveTransition] = useTransition()
@@ -78,13 +141,27 @@ export function MissionClient({
   const { toast } = useToast()
   const router = useRouter()
 
-  const handleSaveProgress = async (answers?: any, mediaFiles?: File[], removedMediaUrls?: string[]) => {
-    console.log("[v0] handleSaveProgress called with:", { answers, mediaFiles, removedMediaUrls })
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
 
+  const handleSaveProgress = async (
+    answers?: Record<string, JsonValue>,
+    mediaFiles?: File[],
+    removedMediaUrls?: string[],
+  ) => {
     if (isSavingProgress) {
-      console.log("[v0] Already saving, ignoring duplicate save")
+      toast({
+        title: "⏳ Save in Progress",
+        description: "Please wait while we save your current changes.",
+        variant: "default",
+      })
       return
     }
+
+    toast({
+      title: "💾 Saving...",
+      description: "Your progress is being saved.",
+    })
 
     startSaveTransition(async () => {
       try {
@@ -118,35 +195,40 @@ export function MissionClient({
 
         await saveDraft(formData)
 
-        console.log("[v0] Progress saved successfully")
         toast({
-          title: "Progress Saved",
+          title: "✓ Progress Saved",
           description: "Your work has been saved as a draft. You can continue later!",
         })
 
         // Refresh the page to get updated data
         router.refresh()
       } catch (error) {
-        console.error("[v0] Error saving progress:", error)
         toast({
-          title: "Save Failed",
-          description: "There was an error saving your progress. Please try again.",
+          title: "❌ Save Failed",
+          description: "Unable to save your progress. Please check your connection and try again.",
           variant: "destructive",
         })
       }
     })
   }
 
-  const handleDynamicSubmit = async (answers: any, mediaFiles: File[]) => {
-    console.log("[v0] handleDynamicSubmit called with:", { answers, mediaFiles })
-
+  const handleDynamicSubmit = async (answers: Record<string, JsonValue>, mediaFiles: File[]) => {
     if (isSubmitting) {
-      console.log("[v0] Already submitting, ignoring duplicate submission")
+      toast({
+        title: "⏳ Submission in Progress",
+        description: "Please wait while we process your submission.",
+        variant: "default",
+      })
       return
     }
 
     startSubmitTransition(async () => {
       try {
+        toast({
+          title: "📤 Submitting...",
+          description: "Your mission is being submitted.",
+        })
+
         const formData = new FormData()
         formData.append("missionId", mission.id)
         formData.append("answers", JSON.stringify(answers))
@@ -162,13 +244,11 @@ export function MissionClient({
           await createNewSubmission(formData)
         }
 
-        console.log("[v0] Submission successful, showing success modal")
         setShowSuccessModal(true)
       } catch (error) {
-        console.error("[v0] Error submitting mission:", error)
         toast({
-          title: "Submission Failed",
-          description: "There was an error submitting your mission. Please try again.",
+          title: "❌ Submission Failed",
+          description: "Unable to submit your mission. Please check your connection and try again.",
           variant: "destructive",
         })
       }
@@ -226,9 +306,9 @@ export function MissionClient({
                   {value.map((item, index) => (
                     <div key={index} className="bg-white/5 rounded-lg p-3 ml-4">
                       <span className="text-sm font-medium text-muted-foreground">#{index + 1}</span>
-                      {typeof item === "object" ? (
+                      {typeof item === "object" && item !== null ? ( // Added null check
                         <div className="mt-1 space-y-1">
-                          {Object.entries(item).map(([subKey, subValue]) => (
+                          {Object.entries(item as Record<string, JsonValue>).map(([subKey, subValue]) => (
                             <div key={subKey}>
                               <span className="text-xs text-muted-foreground">{formatFieldLabel(subKey)}:</span>
                               <p className="text-sm text-foreground">{String(subValue)}</p>
@@ -260,7 +340,7 @@ export function MissionClient({
   }
 
   const addSubmissionForm = () => {
-    const newId = Math.max(...submissionForms.map((f) => f.id)) + 1
+    const newId = Math.max(0, ...submissionForms.map((f) => f.id)) + 1
     setSubmissionForms([...submissionForms, { id: newId, textSubmission: "", mediaFile: null }])
 
     toast({
@@ -283,10 +363,7 @@ export function MissionClient({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
-    console.log("[v0] handleSubmit called")
-
     if (isSubmitting) {
-      console.log("[v0] Already submitting, ignoring duplicate submission")
       return
     }
 
@@ -318,7 +395,6 @@ export function MissionClient({
           await submitDraftAsFinal(formData)
         } else {
           // Original submission logic
-          console.log("[v0] Submitting new forms:", submissionForms.length)
           for (const form of submissionForms) {
             if (form.textSubmission.trim()) {
               const formData = new FormData()
@@ -333,10 +409,8 @@ export function MissionClient({
           }
         }
 
-        console.log("[v0] Submission successful, showing success modal")
         setShowSuccessModal(true)
       } catch (error) {
-        console.error("[v0] Error submitting mission:", error)
         toast({
           title: "Submission Failed",
           description: "There was an error submitting your mission. Please try again.",
@@ -352,7 +426,7 @@ export function MissionClient({
     router.push("/")
   }
 
-  const updateSubmissionForm = (id: number, field: string, value: any) => {
+  const updateSubmissionForm = (id: number, field: string, value: string | File | null) => {
     setSubmissionForms((forms) => forms.map((form) => (form.id === id ? { ...form, [field]: value } : form)))
   }
 
@@ -400,28 +474,38 @@ export function MissionClient({
     }
 
     toast({
-      title: "Draft Loaded",
+      title: "✓ Draft Loaded",
       description: "Your saved draft has been loaded. Continue where you left off!",
     })
   }
 
+  const confirmDeleteDraft = (draftId: string) => {
+    setShowDeleteConfirm(draftId)
+  }
+
   const handleDeleteDraft = async (draftId: string) => {
+    setShowDeleteConfirm(null)
+
     startDeleteTransition(async () => {
       try {
+        toast({
+          title: "🗑️ Deleting...",
+          description: "Your draft is being deleted.",
+        })
+
         await deleteDraftAction(draftId)
 
         toast({
-          title: "Draft Deleted",
-          description: "Your draft has been deleted.",
+          title: "✓ Draft Deleted",
+          description: "Your draft has been permanently deleted.",
         })
 
         // Refresh the page to get updated data
         router.refresh()
       } catch (error) {
-        console.error("Error deleting draft:", error)
         toast({
-          title: "Delete Failed",
-          description: "There was an error deleting your draft.",
+          title: "❌ Delete Failed",
+          description: "Unable to delete your draft. Please try again.",
           variant: "destructive",
         })
       }
@@ -431,6 +515,11 @@ export function MissionClient({
   const saveEditedSubmission = async (submissionId: string) => {
     startEditTransition(async () => {
       try {
+        toast({
+          title: "💾 Saving Changes...",
+          description: "Your submission is being updated.",
+        })
+
         const formData = new FormData()
         formData.append("submissionId", submissionId)
         formData.append("textSubmission", editFormData.textSubmission)
@@ -444,39 +533,52 @@ export function MissionClient({
         setEditingSubmission(null)
         setEditFormData({ textSubmission: "", mediaFile: null })
 
-        if (result.wasApproved) {
+        // Check for success flag and then for wasApproved within data
+        if (result.success && result.data?.wasApproved) {
           toast({
-            title: "Submission Updated",
+            title: "✓ Submission Updated",
             description: "Your submission has been updated and is now pending review again.",
           })
         } else {
           toast({
-            title: "Submission Updated",
-            description: "Your submission has been updated successfully.",
+            title: "✓ Submission Updated",
+            description: "Your changes have been saved successfully.",
           })
         }
 
         // Refresh the page to get updated data
         router.refresh()
       } catch (error) {
-        console.error("Error updating submission:", error)
         toast({
-          title: "Update Failed",
-          description: "There was an error updating your submission. Please try again.",
+          title: "❌ Update Failed",
+          description: "Unable to save your changes. Please check your connection and try again.",
           variant: "destructive",
         })
       }
     })
   }
 
-  const handleDynamicEdit = async (answers: any, mediaFiles: File[], removedMediaUrls?: string[]) => {
+  const handleDynamicEdit = async (
+    answers: Record<string, JsonValue>,
+    mediaFiles: File[],
+    removedMediaUrls?: string[],
+  ) => {
     if (isEditingSubmission) {
-      console.log("[v0] Already editing submission, ignoring duplicate")
+      toast({
+        title: "⏳ Update in Progress",
+        description: "Please wait while we save your changes.",
+        variant: "default",
+      })
       return
     }
 
     startEditTransition(async () => {
       try {
+        toast({
+          title: "💾 Saving Changes...",
+          description: "Your submission is being updated.",
+        })
+
         const formData = new FormData()
         formData.append("submissionId", editingSubmission!)
         formData.append("answers", JSON.stringify(answers))
@@ -494,25 +596,24 @@ export function MissionClient({
         setEditingSubmission(null)
         setEditDynamicAnswers(null)
 
-        if (result.wasApproved) {
+        if (result.success && result.data?.wasApproved) {
           toast({
-            title: "Submission Updated",
+            title: "✓ Submission Updated",
             description: "Your submission has been updated and is now pending review again.",
           })
         } else {
           toast({
-            title: "Submission Updated",
-            description: "Your submission has been updated successfully.",
+            title: "✓ Submission Updated",
+            description: "Your changes have been saved successfully.",
           })
         }
 
         // Refresh the page to get updated data
         router.refresh()
       } catch (error) {
-        console.error("Error updating submission:", error)
         toast({
-          title: "Update Failed",
-          description: "There was an error updating your submission. Please try again.",
+          title: "❌ Update Failed",
+          description: "Unable to save your changes. Please check your connection and try again.",
           variant: "destructive",
         })
       }
@@ -583,6 +684,35 @@ export function MissionClient({
 
   return (
     <>
+      <Dialog open={showDeleteConfirm !== null} onOpenChange={() => setShowDeleteConfirm(null)}>
+        <DialogContent className="bg-white/95 dark:bg-black/95 backdrop-blur-xl border border-white/20 dark:border-white/10 max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <AlertCircle className="h-6 w-6 text-red-500" />
+              <DialogTitle className="text-xl font-bold text-foreground">Delete Draft?</DialogTitle>
+            </div>
+            <DialogDescription className="text-base text-muted-foreground">
+              Are you sure you want to delete this draft? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 mt-4">
+            <Button
+              onClick={() => setShowDeleteConfirm(null)}
+              variant="outline"
+              className="flex-1 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => showDeleteConfirm && handleDeleteDraft(showDeleteConfirm)}
+              className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+            >
+              Delete Draft
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="bg-white/95 dark:bg-black/95 backdrop-blur-xl border border-white/20 dark:border-white/10 max-w-md">
           <DialogHeader className="text-center">
@@ -606,21 +736,22 @@ export function MissionClient({
         </DialogContent>
       </Dialog>
 
-      <div className="mb-4 sm:mb-6">
-        <Link href="/">
+      <div className="mb-3 sm:mb-6">
+        <Link href="/" className="touch-manipulation">
+          {/* Increased touch target to 44px on mobile */}
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 w-auto px-3 sm:h-10 sm:px-4 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 hover:scale-105 transition-all duration-300 text-foreground"
+            className="h-11 sm:h-10 w-auto px-3 sm:px-4 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 hover:scale-105 transition-all duration-300 active:scale-95 text-foreground touch-manipulation"
           >
-            <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" />
+            <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2 flex-shrink-0" />
             <span className="text-sm sm:text-base">Back to Activities</span>
           </Button>
         </Link>
       </div>
 
-      <div className="max-w-4xl mx-auto pb-6 sm:pb-8">
-        <div className="mb-6 sm:mb-8">
+      <div className="max-w-4xl mx-auto pb-4 sm:pb-8">
+        <div className="mb-4 sm:mb-8">
           <div className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-xl p-4 sm:p-8 mb-4 sm:mb-6">
             {mission.image_url && (
               <div className="mb-6 sm:mb-8">
@@ -628,15 +759,19 @@ export function MissionClient({
                   <Image
                     src={mission.image_url || "/placeholder.svg"}
                     alt={mission.title}
-                    fill
-                    className="object-cover"
-                    priority
+                    width={448}
+                    height={448}
+                    className="w-full h-full object-cover"
+                    sizes="(max-width: 768px) 100vw, 448px"
+                    quality={80}
+                    placeholder="empty"
+                    loading="lazy"
                   />
                 </div>
               </div>
             )}
 
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-3 sm:mb-4 text-balance leading-tight">
+            <h1 className="text-xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-foreground mb-3 sm:mb-4 text-balance leading-tight">
               {mission.title}
             </h1>
             <div className="flex items-center justify-between mb-4 sm:mb-6">
@@ -649,15 +784,15 @@ export function MissionClient({
               )}
               <span className="text-teal-600 font-bold text-lg">+{mission.points_value} EP</span>
             </div>
-            <div className="text-base sm:text-lg text-muted-foreground leading-relaxed text-pretty mb-4 sm:mb-6 whitespace-pre-wrap">
+            <div className="text-sm sm:text-base lg:text-lg text-muted-foreground leading-relaxed text-pretty mb-4 sm:mb-6 whitespace-pre-wrap">
               {mission.description}
             </div>
 
             {mission.instructions && (
               <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 backdrop-blur-lg rounded-lg p-4 sm:p-6 border border-white/20 dark:border-white/10 mb-4 sm:mb-6">
-                <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-blue-500" />
-                  Instructions
+                <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-foreground mb-2 sm:mb-3 flex items-center gap-2">
+                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500 flex-shrink-0" />
+                  <span>Instructions</span>
                 </h3>
                 <div className="text-sm sm:text-base text-muted-foreground leading-relaxed whitespace-pre-wrap">
                   {mission.instructions}
@@ -706,16 +841,16 @@ export function MissionClient({
         </div>
 
         <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 hover:scale-[1.01] transition-all duration-300">
-          <CardHeader className="pb-4 sm:pb-6">
-            <CardTitle className="text-xl sm:text-2xl text-foreground flex items-center gap-2">
-              <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-              Submit Your activity
-              <span className="text-sm font-normal text-muted-foreground ml-auto">
+          <CardHeader className="pb-3 sm:pb-6 p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl lg:text-2xl text-foreground flex items-center gap-2 flex-wrap">
+              <FileText className="h-5 w-5 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-primary flex-shrink-0" />
+              <span className="flex-1 min-w-0">Submit Your activity</span>
+              <span className="text-xs sm:text-sm font-normal text-muted-foreground whitespace-nowrap">
                 {existingSubmissions.length}/{maxSubmissions} submissions
               </span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6">
+          <CardContent className="space-y-4 sm:space-y-6 px-4 sm:px-6 pb-4 sm:pb-6">
             {draftSubmissions.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -736,18 +871,22 @@ export function MissionClient({
                           variant="ghost"
                           size="sm"
                           onClick={() => loadDraft(draft)}
-                          className="text-primary hover:text-primary/80 h-6 px-2"
+                          className="text-primary hover:text-primary/80 h-8 px-3 hover:bg-primary/10 transition-colors"
                         >
                           Continue
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDeleteDraft(draft.id)}
+                          onClick={() => confirmDeleteDraft(draft.id)}
                           disabled={isDeletingDraft}
-                          className="text-red-400 hover:text-red-300 h-6 px-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="text-red-400 hover:text-red-300 h-8 px-3 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          <Trash2 className={`h-4 w-4 ${isDeletingDraft ? "animate-pulse" : ""}`} />
+                          {isDeletingDraft ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -761,6 +900,9 @@ export function MissionClient({
                           width={200}
                           height={150}
                           className="rounded-lg object-cover"
+                          sizes="200px"
+                          quality={70}
+                          loading="lazy"
                         />
                       </div>
                     )}
@@ -897,6 +1039,9 @@ export function MissionClient({
                               width={200}
                               height={150}
                               className="rounded-lg object-cover"
+                              sizes="200px"
+                              quality={70}
+                              loading="lazy"
                             />
                           </div>
                         )}
@@ -984,7 +1129,7 @@ export function MissionClient({
                             />
                           </div>
 
-                          <div className="space-y-2 sm:space-y-3">
+                          <div className="space-y-2 sm:space-3">
                             <Label
                               htmlFor={`mediaFile-${form.id}`}
                               className="text-foreground font-semibold text-base sm:text-lg flex items-center gap-2"
@@ -1017,30 +1162,50 @@ export function MissionClient({
                         onClick={() => handleSaveProgress()}
                         disabled={isSavingProgress || isSubmitting}
                         variant="outline"
-                        className="flex-1 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 hover:bg-white/20 dark:hover:bg-black/30 text-foreground font-semibold py-3 sm:py-4 text-base sm:text-lg hover:scale-105 transition-all duration-300 min-h-[48px] sm:min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        className="flex-1 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 hover:bg-white/20 dark:hover:bg-black/30 text-foreground font-semibold py-3 sm:py-4 text-sm sm:text-base lg:text-lg hover:scale-105 transition-all duration-300 min-h-[48px] sm:min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 touch-manipulation active:scale-95"
                         size="lg"
                       >
-                        <Save className={`h-5 w-5 mr-2 ${isSavingProgress ? "animate-pulse" : ""}`} />
-                        {isSavingProgress ? "Saving..." : "Save Progress"}
+                        {isSavingProgress ? (
+                          <>
+                            <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 mr-2 animate-spin" />
+                            <span className="text-sm sm:text-base">Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                            <span className="text-sm sm:text-base">Save Progress</span>
+                          </>
+                        )}
                       </Button>
                       <Button
                         type="submit"
                         disabled={isSubmitting || isSavingProgress}
-                        className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 sm:py-4 text-base sm:text-lg hover:scale-105 transition-all duration-300 min-h-[48px] sm:min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                        className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 sm:py-4 text-sm sm:text-base lg:text-lg hover:scale-105 transition-all duration-300 min-h-[48px] sm:min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 touch-manipulation active:scale-95"
                         size="lg"
                       >
-                        {isSubmitting ? "Submitting..." : `Submit Mission${submissionForms.length > 1 ? "s" : ""}`}
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 mr-2 animate-spin" />
+                            <span className="text-sm sm:text-base">Submitting...</span>
+                          </>
+                        ) : (
+                          <span className="text-sm sm:text-base">
+                            Submit Mission{submissionForms.length > 1 ? "s" : ""}
+                          </span>
+                        )}
                       </Button>
                     </div>
                   </form>
                 )}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <p className="text-lg text-muted-foreground mb-2">
-                  You have reached the maximum number of submissions for this mission.
+              <div className="text-center py-12 bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                <p className="text-lg font-semibold text-foreground mb-2">All Submissions Complete</p>
+                <p className="text-sm text-muted-foreground">
+                  You've reached the maximum of {maxSubmissions} submission{maxSubmissions > 1 ? "s" : ""} for this
+                  mission.
                 </p>
-                <p className="text-sm text-muted-foreground">Maximum submissions allowed: {maxSubmissions}</p>
               </div>
             )}
           </CardContent>

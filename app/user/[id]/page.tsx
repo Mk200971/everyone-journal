@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -55,7 +56,7 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
     },
   )
 
-  console.log("[v0] Fetching profile for user ID:", userId)
+  logger.info("Fetching user profile", { userId })
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -63,11 +64,8 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
     .eq("id", userId)
     .single()
 
-  console.log("[v0] Profile data:", profile)
-  console.log("[v0] Profile error:", profileError)
-
   if (profileError || !profile) {
-    console.log("[v0] Profile not found or error occurred")
+    logger.warn("User profile not found", { userId, error: profileError?.message })
     return null
   }
 
@@ -84,18 +82,15 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
 
-  console.log("[v0] User submissions:", submissions?.length || 0)
-  console.log("[v0] Submissions error:", submissionsError)
+  if (submissionsError) {
+    logger.error("Failed to fetch user submissions", { userId, error: submissionsError.message })
+  }
 
   const totalPoints = profile.total_points || 0
   const completedMissions = submissions?.length || 0
 
   const { data: rankData } = await supabase.rpc("get_user_rank", { user_id_param: userId })
   const userRank = rankData || 0
-
-  console.log("[v0] All users for ranking:", rankData)
-
-  console.log("[v0] User rank calculated:", userRank)
 
   const userProfile: UserProfile = {
     ...profile,
@@ -104,17 +99,24 @@ async function getUserProfile(userId: string): Promise<{ profile: UserProfile; s
     rank: userRank,
   }
 
-  console.log("[v0] Final user profile:", userProfile)
-
   const userSubmissions: UserSubmission[] =
-    submissions?.map((sub: any) => ({
-      id: sub.id,
-      mission_title: sub.missions?.title || "Unknown Mission",
-      mission_id: sub.mission_id,
-      points_awarded: sub.points_awarded || 0,
-      created_at: sub.created_at,
-      status: sub.status,
-    })) || []
+    submissions?.map(
+      (sub: {
+        id: string
+        mission_id: string
+        points_awarded: number
+        created_at: string
+        status: string
+        missions?: { title: string }
+      }) => ({
+        id: sub.id,
+        mission_title: sub.missions?.title || "Unknown Mission",
+        mission_id: sub.mission_id,
+        points_awarded: sub.points_awarded || 0,
+        created_at: sub.created_at,
+        status: sub.status,
+      }),
+    ) || []
 
   return { profile: userProfile, submissions: userSubmissions }
 }

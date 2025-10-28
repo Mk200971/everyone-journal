@@ -19,6 +19,7 @@ import {
 import { Plus, Trash2, Upload, Loader2, Save, X } from "lucide-react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
+import type { JsonValue } from "type-fest"
 
 interface FormField {
   type: "textarea" | "input" | "select" | "url" | "group"
@@ -40,11 +41,11 @@ interface FormSchema {
 
 interface DynamicFormRendererProps {
   schema: FormSchema | null
-  onSubmit: (answers: any, mediaFiles: File[], removedMediaUrls?: string[]) => void
-  onSaveProgress?: (answers: any, mediaFiles: File[], removedMediaUrls?: string[]) => void
+  onSubmit: (answers: Record<string, JsonValue>, mediaFiles: File[], removedMediaUrls?: string[]) => void
+  onSaveProgress?: (answers: Record<string, JsonValue>, mediaFiles: File[], removedMediaUrls?: string[]) => void
   className?: string
   preview?: boolean
-  initialAnswers?: any
+  initialAnswers?: Record<string, JsonValue>
   initialMediaUrls?: string[]
   submitButtonText?: string
   isSubmitting?: boolean
@@ -72,11 +73,11 @@ export function DynamicFormRenderer({
 
   const memoizedSchema = useMemo(() => schema, [schema])
 
-  const [formData, setFormData] = useState<any>(() => initialAnswers || {})
+  const [formData, setFormData] = useState<Record<string, JsonValue>>(() => initialAnswers || {})
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [existingMediaUrls, setExistingMediaUrls] = useState<string[]>(() => initialMediaUrls)
   const [removedMediaUrls, setRemovedMediaUrls] = useState<string[]>([])
-  const [groupInstances, setGroupInstances] = useState<{ [key: string]: number }>({})
+  const [groupInstances, setGroupInstances] = useState<Record<string, number>>({})
   const [internalIsSubmitting, setInternalIsSubmitting] = useState(false)
   const [isSavingProgress, setIsSavingProgress] = useState(false)
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
@@ -86,24 +87,20 @@ export function DynamicFormRenderer({
   useEffect(() => {
     if (!memoizedSchema || initializedRef.current) return
 
-    const newGroupInstances: { [key: string]: number } = {}
+    const newGroupInstances: Record<string, number> = {}
     const newFormData = { ...formData }
 
     memoizedSchema.fields.forEach((field) => {
       if (field.type === "group" && field.repeat && field.fields) {
-        // Check if we already have data for this group
         const existingData = formData[field.name]
 
         if (existingData && Array.isArray(existingData) && existingData.length > 0) {
-          // Use existing data length
           newGroupInstances[field.name] = existingData.length
         } else {
-          // Initialize with minimum instances
           newGroupInstances[field.name] = field.repeat.min
 
-          // Create initial data structure
           const initialData = Array.from({ length: field.repeat.min }, () => {
-            const groupData = {}
+            const groupData: Record<string, JsonValue> = {}
             field.fields?.forEach((subField) => {
               groupData[subField.name] = ""
             })
@@ -137,18 +134,18 @@ export function DynamicFormRenderer({
     setRemovedMediaUrls((prev) => [...prev, url])
   }, [])
 
-  const updateFormData = useCallback((path: string, value: any) => {
-    setFormData((prev: any) => {
+  const updateFormData = useCallback((path: string, value: JsonValue) => {
+    setFormData((prev) => {
       const newData = { ...prev }
       const keys = path.split(".")
-      let current = newData
+      let current: Record<string, JsonValue> = newData
 
       for (let i = 0; i < keys.length - 1; i++) {
         const key = keys[i]
         if (!current[key]) {
           current[key] = {}
         }
-        current = current[key]
+        current = current[key] as Record<string, JsonValue>
       }
 
       current[keys[keys.length - 1]] = value
@@ -157,19 +154,19 @@ export function DynamicFormRenderer({
   }, [])
 
   const getFormValue = useCallback(
-    (path: string) => {
+    (path: string): string => {
       const keys = path.split(".")
-      let current = formData
+      let current: JsonValue = formData
 
       for (const key of keys) {
-        if (current && typeof current === "object" && key in current) {
-          current = current[key]
+        if (current && typeof current === "object" && !Array.isArray(current) && key in current) {
+          current = (current as Record<string, JsonValue>)[key]
         } else {
           return ""
         }
       }
 
-      return current || ""
+      return String(current || "")
     },
     [formData],
   )
@@ -186,14 +183,14 @@ export function DynamicFormRenderer({
           [fieldName]: currentCount + 1,
         }))
 
-        const newGroupData = {}
+        const newGroupData: Record<string, JsonValue> = {}
         field.fields?.forEach((subField) => {
           newGroupData[subField.name] = ""
         })
 
-        setFormData((prev: any) => ({
+        setFormData((prev) => ({
           ...prev,
-          [fieldName]: [...(prev[fieldName] || []), newGroupData],
+          [fieldName]: [...((prev[fieldName] as JsonValue[]) || []), newGroupData],
         }))
       }
     },
@@ -212,9 +209,9 @@ export function DynamicFormRenderer({
           [fieldName]: currentCount - 1,
         }))
 
-        setFormData((prev: any) => ({
+        setFormData((prev) => ({
           ...prev,
-          [fieldName]: prev[fieldName]?.filter((_: any, i: number) => i !== index) || [],
+          [fieldName]: ((prev[fieldName] as JsonValue[]) || []).filter((_, i) => i !== index),
         }))
       }
     },
@@ -230,7 +227,7 @@ export function DynamicFormRenderer({
         case "textarea":
           return (
             <div key={fieldPath} className="space-y-2">
-              <Label htmlFor={fieldId} className="text-foreground font-medium">
+              <Label htmlFor={fieldId} className="text-sm sm:text-base text-foreground font-medium">
                 {field.label}
                 {field.required && <span className="text-red-400 ml-1">*</span>}
               </Label>
@@ -239,7 +236,7 @@ export function DynamicFormRenderer({
                 id={fieldId}
                 value={getFormValue(fieldPath)}
                 onChange={(e) => updateFormData(fieldPath, e.target.value)}
-                className="min-h-32 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground resize-none"
+                className="min-h-32 sm:min-h-28 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground resize-none text-base touch-manipulation"
                 required={field.required}
                 maxLength={field.maxLength}
                 rows={field.minRows || 3}
@@ -256,7 +253,7 @@ export function DynamicFormRenderer({
         case "url":
           return (
             <div key={fieldPath} className="space-y-2">
-              <Label htmlFor={fieldId} className="text-foreground font-medium">
+              <Label htmlFor={fieldId} className="text-sm sm:text-base text-foreground font-medium">
                 {field.label}
                 {field.required && <span className="text-red-400 ml-1">*</span>}
               </Label>
@@ -266,7 +263,7 @@ export function DynamicFormRenderer({
                 type={field.type === "url" ? "url" : "text"}
                 value={getFormValue(fieldPath)}
                 onChange={(e) => updateFormData(fieldPath, e.target.value)}
-                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground"
+                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground h-12 sm:h-10 text-base touch-manipulation"
                 required={field.required}
                 maxLength={field.maxLength}
               />
@@ -276,7 +273,7 @@ export function DynamicFormRenderer({
         case "select":
           return (
             <div key={fieldPath} className="space-y-2">
-              <Label htmlFor={fieldId} className="text-foreground font-medium">
+              <Label htmlFor={fieldId} className="text-sm sm:text-base text-foreground font-medium">
                 {field.label}
                 {field.required && <span className="text-red-400 ml-1">*</span>}
               </Label>
@@ -309,7 +306,7 @@ export function DynamicFormRenderer({
           return (
             <div key={fieldPath} className="space-y-4">
               <div className="flex justify-between items-center">
-                <Label className="text-foreground font-medium text-lg">
+                <Label className="text-sm sm:text-base text-foreground font-medium text-lg">
                   {field.label}
                   {field.required && <span className="text-red-400 ml-1">*</span>}
                 </Label>
@@ -333,7 +330,7 @@ export function DynamicFormRenderer({
                   className="bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-4 space-y-4"
                 >
                   <div className="flex justify-between items-center">
-                    <h4 className="font-medium text-foreground">
+                    <h4 className="font-medium text-sm sm:text-base text-foreground">
                       {field.label} #{index + 1}
                     </h4>
                     {instanceCount > field.repeat.min && (
@@ -400,10 +397,10 @@ export function DynamicFormRenderer({
         const fieldPath = basePath ? `${basePath}.${field.name}` : field.name
 
         if (field.type === "group" && field.fields && field.repeat) {
-          const groupData = formData[field.name] || []
+          const groupData = (formData[field.name] as JsonValue[]) || []
           if (field.required && groupData.length === 0) return false
 
-          return groupData.every((_: any, index: number) =>
+          return groupData.every((_, index) =>
             field.fields!.every((subField) => validateField(subField, `${field.name}.${index}`)),
           )
         }
@@ -465,7 +462,7 @@ export function DynamicFormRenderer({
       <>
         {memoizedSchema?.fields.map((field) => renderField(field)) || (
           <div className="space-y-2">
-            <Label htmlFor="journal_entry" className="text-foreground font-medium">
+            <Label htmlFor="journal_entry" className="text-sm sm:text-base text-foreground font-medium">
               Your Journal Entry
               <span className="text-red-400 ml-1">*</span>
             </Label>
@@ -474,7 +471,7 @@ export function DynamicFormRenderer({
               id="journal_entry"
               value={getFormValue("journal_entry")}
               onChange={(e) => updateFormData("journal_entry", e.target.value)}
-              className="min-h-32 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground resize-none"
+              className="min-h-32 sm:min-h-28 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground resize-none text-base touch-manipulation"
               required
               minRows={4}
             />
@@ -482,7 +479,7 @@ export function DynamicFormRenderer({
         )}
 
         <div className="space-y-2">
-          <Label className="text-foreground font-medium flex items-center gap-2">
+          <Label className="text-sm sm:text-base text-foreground font-medium flex items-center gap-2">
             <Upload className="h-4 w-4 text-primary" />
             Upload Media (Optional)
           </Label>

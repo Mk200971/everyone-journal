@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar"
 import { ArrowLeft, ExternalLink, Calendar, Award } from "lucide-react"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
 
 export default async function AccountMissionsPage() {
   const cookieStore = await cookies()
@@ -41,7 +42,7 @@ export default async function AccountMissionsPage() {
     redirect("/auth/login")
   }
 
-  console.log("[v0] Fetching submissions for user:", user.id)
+  logger.info("Fetching user submissions", { userId: user.id })
 
   const { data: submissionHistory } = await supabase
     .from("submissions")
@@ -56,13 +57,11 @@ export default async function AccountMissionsPage() {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
 
-  console.log("[v0] Server-side submission history:", submissionHistory)
-
   const missionIds = submissionHistory?.map((s) => s.mission_id) || []
-  console.log("[v0] Mission IDs:", missionIds)
+  logger.info("Mission IDs:", { missionIds })
 
   const { data: missions } = await supabase.from("missions").select("id, title, description").in("id", missionIds)
-  console.log("[v0] Missions data:", missions)
+  logger.info("Missions data:", { missions })
 
   const submissionHistoryWithTitles =
     submissionHistory?.map((submission) => {
@@ -76,7 +75,7 @@ export default async function AccountMissionsPage() {
       }
     }) || []
 
-  console.log("[v0] Final submission history with titles:", submissionHistoryWithTitles)
+  logger.info("Final submission history with titles:", { submissionHistoryWithTitles })
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {

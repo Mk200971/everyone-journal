@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 import { MissionClient } from "./mission-client"
 import { Navbar } from "@/components/navbar"
 import { createClient } from "@/lib/supabase/server"
+import { MissionDetailSkeleton } from "@/components/skeleton-loaders"
+import { logger } from "@/lib/logger"
 
 interface MissionDetailPageProps {
   params: Promise<{
@@ -16,7 +18,7 @@ async function getMissionData(id: string) {
   const { data: missionData, error } = await supabase.from("missions").select("*").eq("id", id).single()
 
   if (error || !missionData) {
-    console.log("[v0] Mission not found:", id, error?.message)
+    logger.warn("Mission not found", { missionId: id, error: error?.message })
     notFound()
   }
 
@@ -26,7 +28,7 @@ async function getMissionData(id: string) {
   } = await supabase.auth.getUser()
 
   if (userError) {
-    console.log("[v0] Error getting user:", userError.message)
+    logger.error("Error getting user for mission page", { error: userError.message })
   }
 
   let profile = null
@@ -111,11 +113,8 @@ export default async function MissionDetailPage({ params }: MissionDetailPagePro
 
         <Suspense
           fallback={
-            <div className="min-h-screen flex items-center justify-center">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Loading mission...</p>
-              </div>
+            <div className="min-h-screen py-6">
+              <MissionDetailSkeleton />
             </div>
           }
         >

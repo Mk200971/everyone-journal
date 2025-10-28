@@ -33,9 +33,10 @@ interface Mission {
 
 interface MissionCardProps {
   mission: Mission
+  priority?: boolean // Added priority prop for above-fold optimization
 }
 
-export function MissionCard({ mission }: MissionCardProps) {
+export function MissionCard({ mission, priority = false }: MissionCardProps) {
   if (!mission || !mission.id) {
     return (
       <div className="h-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 min-h-[400px] flex items-center justify-center">
@@ -178,7 +179,7 @@ export function MissionCard({ mission }: MissionCardProps) {
 
   const CardContent = () => (
     <UICardContent className="h-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer relative overflow-hidden group-hover:shadow-2xl min-h-[400px] touch-manipulation will-change-transform">
-      <div className="flex items-center justify-between p-4 pb-2">
+      <div className="flex items-center justify-between p-3 sm:p-4 pb-2">
         {mission.type && (
           <Badge
             className={`${getBadgeStyle()} font-medium px-3 py-1 text-sm rounded-full transition-all duration-300 hover:scale-105`}
@@ -186,20 +187,27 @@ export function MissionCard({ mission }: MissionCardProps) {
             {mission.type} #{getMissionNumber()}
           </Badge>
         )}
-        <span className="text-teal-600 font-bold text-lg" aria-label={`${mission.points_value} experience points`}>
+        <span
+          className="text-teal-600 font-bold text-lg sm:text-xl"
+          aria-label={`${mission.points_value} experience points`}
+        >
           +{mission.points_value} EP
         </span>
       </div>
 
-      <CardHeader className="pt-0 pb-4 px-4">
-        <CardTitle className="text-xl font-bold text-gray-900 dark:text-white leading-tight">{mission.title}</CardTitle>
+      <CardHeader className="pt-0 pb-3 sm:pb-4 px-3 sm:px-4">
+        <CardTitle className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white leading-tight text-balance">
+          {mission.title}
+        </CardTitle>
       </CardHeader>
 
-      <div className="px-4 mb-4">
-        <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed line-clamp-3">{mission.description}</p>
+      <div className="px-3 sm:px-4 mb-3 sm:mb-4">
+        <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-sm leading-relaxed line-clamp-3 text-pretty">
+          {mission.description}
+        </p>
       </div>
 
-      <div className="px-4 mb-4">
+      <div className="px-3 sm:px-4 mb-3 sm:mb-4">
         {mission.image_url ? (
           <div className="w-full aspect-square bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden">
             <Image
@@ -208,10 +216,11 @@ export function MissionCard({ mission }: MissionCardProps) {
               width={400}
               height={400}
               className="w-full h-full object-cover"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              loading="lazy"
-              placeholder="blur"
-              blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
+              loading={priority ? "eager" : "lazy"} // Use eager loading for priority images
+              priority={priority} // Added priority prop for LCP optimization
+              quality={70}
+              placeholder="empty"
               onError={(e) => {
                 const target = e.target as HTMLImageElement
                 target.src = "/mission-placeholder.jpg"
@@ -226,49 +235,51 @@ export function MissionCard({ mission }: MissionCardProps) {
               width={400}
               height={400}
               className="w-full h-full object-cover"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              loading="lazy"
-              unoptimized={false}
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
+              loading={priority ? "eager" : "lazy"} // Use eager loading for priority images
+              priority={priority} // Added priority prop for fallback images too
+              quality={70}
+              placeholder="empty"
             />
           </div>
         )}
       </div>
 
-      <div className="px-4 pb-4">
-        <div className="space-y-3">
+      <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+        <div className="space-y-2 sm:space-y-3">
           {mission.duration && (
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Clock className="h-4 w-4" aria-hidden="true" />
-              <span>{mission.duration}</span>
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+              <Clock className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" aria-hidden="true" />
+              <span className="truncate">{mission.duration}</span>
             </div>
           )}
 
           {mission.coordinator && (
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Users className="h-4 w-4" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+              <Users className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
               <span>{mission.coordinator}</span>
             </div>
           )}
 
           {mission.support_status && (
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Gauge className="h-4 w-4" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+              <Gauge className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
               <span>{mission.support_status}</span>
             </div>
           )}
 
           {mission.due_date && (
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Calendar className="h-4 w-4" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+              <Calendar className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
               <span>{formatDueDate(mission.due_date)}</span>
             </div>
           )}
         </div>
       </div>
 
-      <CardFooter className="px-4 pb-4 mt-auto">
+      <CardFooter className="px-3 sm:px-4 pb-3 sm:pb-4 mt-auto">
         <Button
-          className={`w-full font-medium py-2 px-4 rounded-lg transition-colors duration-200 ${buttonState.className}`}
+          className={`w-full font-medium py-3 sm:py-2 px-4 rounded-lg transition-colors duration-200 min-h-[48px] sm:min-h-[44px] text-sm sm:text-base touch-manipulation ${buttonState.className}`}
         >
           {buttonState.text}
           {buttonState.icon}

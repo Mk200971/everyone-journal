@@ -15,6 +15,7 @@ interface OptimizedImageProps {
   unoptimized?: boolean
   placeholder?: "blur" | "empty"
   blurDataURL?: string
+  quality?: number
 }
 
 export function OptimizedImage({
@@ -27,8 +28,9 @@ export function OptimizedImage({
   priority = false,
   fill = false,
   unoptimized = false,
-  placeholder = "blur",
+  placeholder = "empty",
   blurDataURL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q==",
+  quality = 75,
 }: OptimizedImageProps) {
   const [hasError, setHasError] = useState(false)
 
@@ -69,6 +71,7 @@ export function OptimizedImage({
       unoptimized={shouldUnoptimize()}
       placeholder={shouldUnoptimize() ? "empty" : placeholder}
       blurDataURL={shouldUnoptimize() ? undefined : blurDataURL}
+      quality={quality}
       onError={handleError}
     />
   )

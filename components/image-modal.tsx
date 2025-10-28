@@ -34,6 +34,9 @@ export function ImageModal({ src, alt, isOpen, onClose }: ImageModalProps) {
           height={800}
           className="max-w-full max-h-[90vh] object-contain"
           onClick={(e) => e.stopPropagation()}
+          sizes="90vw"
+          quality={85}
+          loading="lazy"
         />
       </div>
     </div>
@@ -60,6 +63,8 @@ export function ClickableImage({ src, alt, width, height, className }: Clickable
         height={height}
         className={`${className} cursor-pointer hover:opacity-90 transition-opacity`}
         onClick={() => setIsModalOpen(true)}
+        quality={75}
+        loading="lazy"
       />
 
       <ImageModal

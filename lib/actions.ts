@@ -3,8 +3,174 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
+import type { Mission, Profile, Submission, Resource, NoticeboardItem, JsonValue } from "@/types/database"
+import { logger } from "@/lib/logger"
+import {
+  createMissionSchema,
+  updateMissionSchema,
+  deleteMissionSchema,
+  submitMissionSchema,
+  saveDraftSchema,
+  updateSubmissionSchema,
+  deleteDraftSchema,
+  updateProfileSchema,
+  updateAvatarSchema,
+  signUpSchema,
+  updateMissionOrderSchema,
+  paginationSchema,
+  validateFormData,
+} from "@/lib/validation-schemas"
 
-async function getAuthorizedAdminClient() {
+export enum ActionErrorCode {
+  AUTH_ERROR = "AUTH_ERROR",
+  VALIDATION_ERROR = "VALIDATION_ERROR",
+  DATABASE_ERROR = "DATABASE_ERROR",
+  STORAGE_ERROR = "STORAGE_ERROR",
+  NOT_FOUND = "NOT_FOUND",
+  PERMISSION_DENIED = "PERMISSION_DENIED",
+  RATE_LIMIT = "RATE_LIMIT",
+  UNKNOWN_ERROR = "UNKNOWN_ERROR",
+}
+
+type PaginationMetadata = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
+type ActionResponse<T = void> =
+  | {
+      success: true
+      data: T
+      pagination?: PaginationMetadata
+    }
+  | {
+      success: false
+      error: string
+      errorCode: ActionErrorCode
+    }
+
+type SubmissionResponse = ActionResponse<void>
+type ProfileUpdateResponse = ActionResponse<void>
+type SignOutResponse = ActionResponse<{ redirectTo: string }>
+type MissionResponse = ActionResponse<{ id: string }>
+type AvatarUpdateResponse = ActionResponse<{ avatar_url: string }>
+type ExportDataResponse = ActionResponse<{
+  missions: Mission[]
+  profiles: Profile[]
+  submissions: Array<
+    Submission & {
+      user_name: string
+      user_email: string
+      mission_title: string
+      answers_raw: string | null
+      [key: string]: JsonValue
+    }
+  >
+  resources: Resource[]
+  noticeboard_items: NoticeboardItem[]
+}>
+
+type CommunityActivityResponse = ActionResponse<
+  Array<{
+    id: string
+    created_at: string
+    points_awarded: number
+    user_name: string
+    mission_title: string
+    mission_id?: string
+    user_avatar_url: string | null
+    user_id: string
+    status: string
+    type: "submission" | "profile_update"
+    changed_fields?: string[]
+  }>
+>
+type DraftResponse = ActionResponse<void>
+type UpdateSubmissionResponse = ActionResponse<{ wasApproved: boolean }>
+type SubmitDraftResponse = ActionResponse<{ missionId: string }>
+
+function handleActionError(
+  error: unknown,
+  context: string,
+  userId?: string,
+): { success: false; error: string; errorCode: ActionErrorCode } {
+  logger.error(context, error, { userId, action: context })
+
+  if (error instanceof Error) {
+    // Detect specific error types
+    if (error.message.includes("not authenticated") || error.message.includes("Unauthorized")) {
+      return {
+        success: false,
+        error: "You must be logged in to perform this action",
+        errorCode: ActionErrorCode.AUTH_ERROR,
+      }
+    }
+
+    if (error.message.includes("not found") || error.message.includes("does not exist")) {
+      return {
+        success: false,
+        error: "The requested resource was not found",
+        errorCode: ActionErrorCode.NOT_FOUND,
+      }
+    }
+
+    if (error.message.includes("permission") || error.message.includes("access denied")) {
+      return {
+        success: false,
+        error: "You don't have permission to perform this action",
+        errorCode: ActionErrorCode.PERMISSION_DENIED,
+      }
+    }
+
+    if (error.message.includes("rate limit") || error.message.includes("Too Many Requests")) {
+      return {
+        success: false,
+        error: "Too many requests. Please try again in a moment",
+        errorCode: ActionErrorCode.RATE_LIMIT,
+      }
+    }
+
+    if (error.message.includes("storage") || error.message.includes("upload")) {
+      return {
+        success: false,
+        error: "File upload failed. Please check your file and try again",
+        errorCode: ActionErrorCode.STORAGE_ERROR,
+      }
+    }
+
+    if (error.message.includes("database") || error.message.includes("query")) {
+      return {
+        success: false,
+        error: "Database error. Please try again",
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
+    }
+
+    return {
+      success: false,
+      error: error.message,
+      errorCode: ActionErrorCode.UNKNOWN_ERROR,
+    }
+  }
+
+  return {
+    success: false,
+    error: `${context} failed. Please try again`,
+    errorCode: ActionErrorCode.UNKNOWN_ERROR,
+  }
+}
+
+/**
+ * Verifies admin authentication and returns authorized client
+ * @throws {Error} If user is not authenticated or not an admin
+ * @returns {Promise<{userId: string, adminClient: ReturnType<typeof createAdminClient>}>} User ID and admin client instance
+ */
+async function getAuthorizedAdminClient(): Promise<{
+  userId: string
+  adminClient: ReturnType<typeof createAdminClient>
+}> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -28,7 +194,13 @@ async function getAuthorizedAdminClient() {
   return { userId: user.id, adminClient: createAdminClient() }
 }
 
-export async function submitMission(formData: FormData) {
+/**
+ * Submits a mission with text and optional media
+ * @param {FormData} formData - Form data containing mission submission details
+ * @returns {Promise<SubmissionResponse>} Success status and any error details
+ */
+export async function submitMission(formData: FormData): Promise<SubmissionResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -37,21 +209,30 @@ export async function submitMission(formData: FormData) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "Not authenticated" }
+      return {
+        success: false,
+        error: "You must be logged in to submit a mission",
+        errorCode: ActionErrorCode.AUTH_ERROR,
+      }
     }
 
-    const missionId = formData.get("missionId") as string
-    const textSubmission = formData.get("textSubmission") as string
-    const mediaFile = formData.get("mediaFile") as File
+    userId = user.id
 
-    if (!missionId || !textSubmission) {
-      return { success: false, error: "Mission ID and text submission are required" }
+    const validation = validateFormData(formData, submitMissionSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid submission data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
+
+    const { missionId, textSubmission, mediaFile } = validation.data
 
     const { data: mission } = await supabase.from("missions").select("points_value").eq("id", missionId).single()
 
     if (!mission) {
-      return { success: false, error: "Mission not found" }
+      return { success: false, error: "Mission not found", errorCode: ActionErrorCode.NOT_FOUND }
     }
 
     let mediaUrl = null
@@ -60,38 +241,51 @@ export async function submitMission(formData: FormData) {
       const fileName = `${user.id}/${Date.now()}.${fileExt}`
       const { error: uploadError } = await supabase.storage.from("submissions").upload(fileName, mediaFile)
 
-      if (!uploadError) {
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("submissions").getPublicUrl(fileName)
-        mediaUrl = publicUrl
+      if (uploadError) {
+        logger.error("submitMission - media upload", uploadError, { userId })
+        return { success: false, error: "Failed to upload media file", errorCode: ActionErrorCode.STORAGE_ERROR }
       }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("submissions").getPublicUrl(fileName)
+      mediaUrl = publicUrl
     }
 
     const { error } = await supabase.from("submissions").insert({
       mission_id: missionId,
       user_id: user.id,
-      text_submission: textSubmission,
+      text_submission: textSubmission || null,
       media_url: mediaUrl,
       status: "pending",
       points_awarded: 0,
     })
 
     if (error) {
-      return { success: false, error: "Failed to submit mission" }
+      logger.error("submitMission - database insert", error, { userId })
+      return {
+        success: false,
+        error: "Failed to submit mission. Please try again",
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     revalidatePath(`/mission/${missionId}`)
     revalidatePath("/")
 
-    return { success: true }
+    return { success: true, data: undefined }
   } catch (error) {
-    console.error("[Action] submitMission error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "submitMission", userId)
   }
 }
 
-export async function updateProfile(formData: FormData) {
+/**
+ * Updates user profile information
+ * @param {FormData} formData - Form data containing profile fields
+ * @returns {Promise<ProfileUpdateResponse>} Success status and any error details
+ */
+export async function updateProfile(formData: FormData): Promise<ProfileUpdateResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -100,19 +294,25 @@ export async function updateProfile(formData: FormData) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "Not authenticated" }
+      return {
+        success: false,
+        error: "You must be logged in to update your profile",
+        errorCode: ActionErrorCode.AUTH_ERROR,
+      }
     }
 
-    const name = formData.get("name") as string
-    const jobTitle = formData.get("job_title") as string
-    const department = formData.get("department") as string
-    const bio = formData.get("bio") as string
-    const country = formData.get("country") as string
-    const customerObsession = formData.get("customer_obsession") as string
+    userId = user.id
 
-    if (!name) {
-      return { success: false, error: "Name is required" }
+    const validation = validateFormData(formData, updateProfileSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid profile data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
+
+    const { name, job_title, department, bio, country, customer_obsession } = validation.data
 
     const { data: currentProfile } = await supabase
       .from("profiles")
@@ -120,13 +320,13 @@ export async function updateProfile(formData: FormData) {
       .eq("id", user.id)
       .single()
 
-    const updateData: any = { name }
+    const updateData: Partial<Profile> = { name }
     const changedFields: string[] = []
 
     if (currentProfile) {
       if (name !== currentProfile.name) changedFields.push("name")
-      if (jobTitle && jobTitle !== currentProfile.job_title) {
-        updateData.job_title = jobTitle
+      if (job_title && job_title !== currentProfile.job_title) {
+        updateData.job_title = job_title
         changedFields.push("job title")
       }
       if (department && department !== currentProfile.department) {
@@ -141,22 +341,27 @@ export async function updateProfile(formData: FormData) {
         updateData.country = country
         changedFields.push("country")
       }
-      if (customerObsession && customerObsession !== currentProfile.customer_obsession) {
-        updateData.customer_obsession = customerObsession
+      if (customer_obsession && customer_obsession !== currentProfile.customer_obsession) {
+        updateData.customer_obsession = customer_obsession
         changedFields.push("customer obsession")
       }
     } else {
-      if (jobTitle) updateData.job_title = jobTitle
+      if (job_title) updateData.job_title = job_title
       if (department) updateData.department = department
       if (bio) updateData.bio = bio
       if (country) updateData.country = country
-      if (customerObsession) updateData.customer_obsession = customerObsession
+      if (customer_obsession) updateData.customer_obsession = customer_obsession
     }
 
     const { error } = await supabase.from("profiles").update(updateData).eq("id", user.id)
 
     if (error) {
-      return { success: false, error: "Failed to update profile" }
+      logger.error("updateProfile - database update", error, { userId })
+      return {
+        success: false,
+        error: "Failed to update profile. Please try again",
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     if (changedFields.length > 0) {
@@ -173,62 +378,61 @@ export async function updateProfile(formData: FormData) {
     revalidatePath("/activity")
     revalidatePath("/")
 
-    return { success: true }
+    return { success: true, data: undefined }
   } catch (error) {
-    console.error("[Action] updateProfile error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "updateProfile", userId)
   }
 }
 
-export async function signOut() {
+/**
+ * Signs out the current user
+ * @returns {Promise<SignOutResponse>} Redirect URL on success
+ */
+export async function signOut(): Promise<SignOutResponse> {
   try {
     const supabase = await createClient()
-    await supabase.auth.signOut({ scope: "global" })
-    return { success: true, redirectTo: "/auth/login" }
+    const { error } = await supabase.auth.signOut({ scope: "global" })
+
+    if (error) {
+      logger.error("signOut", error)
+      return { success: false, error: "Failed to sign out. Please try again", errorCode: ActionErrorCode.AUTH_ERROR }
+    }
+
+    return { success: true, data: { redirectTo: "/auth/login" } }
   } catch (error) {
-    return { success: false, error: "Failed to sign out" }
+    return handleActionError(error, "signOut")
   }
 }
 
 export async function createMission(formData: FormData) {
+  let userId: string | undefined
   try {
-    const { userId, adminClient } = await getAuthorizedAdminClient()
+    const { userId: adminUserId, adminClient } = await getAuthorizedAdminClient()
+    userId = adminUserId
 
-    const title = formData.get("title") as string
-    const description = formData.get("description") as string
-    const instructions = formData.get("instructions") as string
-    const tipsInspiration = formData.get("tips_inspiration") as string
-    const pointsValue = Number.parseInt(formData.get("points_value") as string)
-    const typeRaw = formData.get("type") as string
-    const type = typeRaw.charAt(0).toUpperCase() + typeRaw.slice(1)
-    const resourceId = formData.get("resource_id") as string
-    const finalResourceId = resourceId === "none" || resourceId === "" ? null : resourceId
-    const quoteId = formData.get("quote_id") as string
-    const finalQuoteId = quoteId === "none" || quoteId === "" ? null : quoteId
-    const missionImageFile = formData.get("mission_image") as File
-    const duration = formData.get("duration") as string
-    const coordinator = formData.get("coordinator") as string
-    const supportStatus = formData.get("support_status") as string
-    const dueDate = formData.get("due_date") as string
-    const submissionSchemaString = formData.get("submission_schema") as string
-    const maxSubmissions = formData.get("max_submissions_per_user") as string
-    const missionNumber = formData.get("mission_number") as string
-    const displayOrder = formData.get("display_order") as string
-
-    if (!title || !description || !pointsValue || !type) {
-      return { success: false, error: "All required fields must be filled" }
+    const validation = validateFormData(formData, createMissionSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid mission data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
+
+    const validatedData = validation.data
+    const missionImageFile = formData.get("mission_image") as File | null
 
     let imageUrl = null
     if (missionImageFile && missionImageFile.size > 0) {
       const { data: buckets, error: bucketsError } = await adminClient.storage.listBuckets()
       if (bucketsError) {
-        return { success: false, error: "Unable to access storage" }
+        logger.error("createMission - list buckets", bucketsError, { userId })
+        return { success: false, error: "Unable to access storage", errorCode: ActionErrorCode.STORAGE_ERROR }
       }
 
       const missionsBucket = buckets?.find((bucket) => bucket.id === "missions-media")
       if (!missionsBucket) {
-        return { success: false, error: "missions-media bucket not found" }
+        return { success: false, error: "missions-media bucket not found", errorCode: ActionErrorCode.STORAGE_ERROR }
       }
 
       const fileExt = missionImageFile.name.split(".").pop()
@@ -236,44 +440,28 @@ export async function createMission(formData: FormData) {
       const { error: uploadError } = await adminClient.storage.from("missions-media").upload(fileName, missionImageFile)
 
       if (uploadError) {
-        return { success: false, error: `Image upload failed: ${uploadError.message}` }
+        logger.error("createMission - image upload", uploadError, { userId })
+        return {
+          success: false,
+          error: `Image upload failed: ${uploadError.message}`,
+          errorCode: ActionErrorCode.STORAGE_ERROR,
+        }
       }
 
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
       imageUrl = `${supabaseUrl}/storage/v1/object/public/missions-media/${fileName}`
     }
 
-    const missionData: any = {
-      title,
-      description,
-      instructions: instructions || null,
-      tips_inspiration: tipsInspiration || null,
-      points_value: pointsValue,
-      type,
-      resource_id: finalResourceId,
-      quote_id: finalQuoteId,
+    const missionData: Partial<Mission> = {
+      ...validatedData,
       image_url: imageUrl,
-      duration: duration || null,
-      coordinator: coordinator || null,
-      support_status: supportStatus || null,
-      due_date: dueDate || null,
     }
-
-    if (missionNumber) missionData.mission_number = Number.parseInt(missionNumber)
-    if (displayOrder) missionData.display_order = Number.parseInt(displayOrder)
-    if (submissionSchemaString) {
-      try {
-        missionData.submission_schema = JSON.parse(submissionSchemaString)
-      } catch {
-        return { success: false, error: "Invalid submission schema format" }
-      }
-    }
-    if (maxSubmissions) missionData.max_submissions_per_user = Number.parseInt(maxSubmissions)
 
     const { data, error } = await adminClient.from("missions").insert(missionData).select()
 
     if (error) {
-      return { success: false, error: `Database error: ${error.message}` }
+      logger.error("createMission - database insert", error, { userId })
+      return { success: false, error: `Database error: ${error.message}`, errorCode: ActionErrorCode.DATABASE_ERROR }
     }
 
     revalidatePath("/admin")
@@ -281,99 +469,74 @@ export async function createMission(formData: FormData) {
 
     return { success: true, data }
   } catch (error) {
-    console.error("[Action] createMission error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "An error occurred",
-    }
+    return handleActionError(error, "createMission", userId)
   }
 }
 
 export async function updateMission(formData: FormData) {
+  let userId: string | undefined
   try {
-    const { userId, adminClient } = await getAuthorizedAdminClient()
+    const { userId: adminUserId, adminClient } = await getAuthorizedAdminClient()
+    userId = adminUserId
 
-    const id = formData.get("id") as string
-    const title = formData.get("title") as string
-    const description = formData.get("description") as string
-    const instructions = formData.get("instructions") as string
-    const tipsInspiration = formData.get("tips_inspiration") as string
-    const pointsValue = Number.parseInt(formData.get("points_value") as string)
-    const typeRaw = formData.get("type") as string
-    const type = typeRaw.charAt(0).toUpperCase() + typeRaw.slice(1)
-    const resourceId = formData.get("resource_id") as string
-    const finalResourceId = resourceId === "none" || resourceId === "" ? null : resourceId
-    const quoteId = formData.get("quote_id") as string
-    const finalQuoteId = quoteId === "none" || quoteId === "" ? null : quoteId
-    const missionImageFile = formData.get("mission_image") as File
-    const duration = formData.get("duration") as string
-    const coordinator = formData.get("coordinator") as string
-    const supportStatus = formData.get("support_status") as string
-    const dueDate = formData.get("due_date") as string
-    const submissionSchemaString = formData.get("submission_schema") as string
-    const maxSubmissions = formData.get("max_submissions_per_user") as string
-    const missionNumber = formData.get("mission_number") as string
-    const displayOrder = formData.get("display_order") as string
-
-    if (!id || !title || !description || !pointsValue || !type) {
-      return { success: false, error: "All required fields must be filled" }
+    const validation = validateFormData(formData, updateMissionSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid mission data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
+
+    const validatedData = validation.data
+    const missionImageFile = formData.get("mission_image") as File | null
 
     let imageUrl = null
     if (missionImageFile && missionImageFile.size > 0) {
       const { data: buckets, error: bucketsError } = await adminClient.storage.listBuckets()
       if (bucketsError) {
-        return { success: false, error: "Unable to access storage" }
+        logger.error("updateMission - list buckets", bucketsError, { userId })
+        return { success: false, error: "Unable to access storage", errorCode: ActionErrorCode.STORAGE_ERROR }
       }
 
       const missionsBucket = buckets?.find((bucket) => bucket.id === "missions-media")
       if (!missionsBucket) {
-        return { success: false, error: "missions-media bucket not found" }
+        return { success: false, error: "missions-media bucket not found", errorCode: ActionErrorCode.STORAGE_ERROR }
       }
 
       const fileExt = missionImageFile.name.split(".").pop()
-      const fileName = `mission-${id}-${Date.now()}.${fileExt}`
-      const { error: uploadError } = await adminClient.storage.from("missions-media").upload(fileName, missionImageFile)
+      const fileName = `mission-${validatedData.id}-${Date.now()}.${fileExt}`
+      const filePath = `${userId}/${fileName}`
+      const { error: uploadError } = await adminClient.storage.from("missions-media").upload(filePath, missionImageFile)
 
       if (uploadError) {
-        return { success: false, error: `Image upload failed: ${uploadError.message}` }
+        logger.error("updateMission - image upload", uploadError, { userId })
+        return {
+          success: false,
+          error: `Image upload failed: ${uploadError.message}`,
+          errorCode: ActionErrorCode.STORAGE_ERROR,
+        }
       }
 
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
       imageUrl = `${supabaseUrl}/storage/v1/object/public/missions-media/${fileName}`
     }
 
-    const updateData: any = {
-      title,
-      description,
-      instructions: instructions || null,
-      tips_inspiration: tipsInspiration || null,
-      points_value: pointsValue,
-      type,
-      resource_id: finalResourceId,
-      quote_id: finalQuoteId,
-      duration: duration || null,
-      coordinator: coordinator || null,
-      support_status: supportStatus || null,
-      due_date: dueDate || null,
+    const updateData: Partial<Mission> = {
+      ...validatedData,
     }
 
-    if (missionNumber) updateData.mission_number = Number.parseInt(missionNumber)
-    if (displayOrder) updateData.display_order = Number.parseInt(displayOrder)
-    if (submissionSchemaString) {
-      try {
-        updateData.submission_schema = JSON.parse(submissionSchemaString)
-      } catch {
-        return { success: false, error: "Invalid submission schema format" }
-      }
-    }
-    if (maxSubmissions) updateData.max_submissions_per_user = Number.parseInt(maxSubmissions)
     if (imageUrl) updateData.image_url = imageUrl
 
-    const { error } = await adminClient.from("missions").update(updateData).eq("id", id)
+    const { error } = await adminClient.from("missions").update(updateData).eq("id", validatedData.id)
 
     if (error) {
-      return { success: false, error: `Failed to update mission: ${error.message}` }
+      logger.error("updateMission - database update", error, { userId })
+      return {
+        success: false,
+        error: `Failed to update mission: ${error.message}`,
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     revalidatePath("/admin")
@@ -381,27 +544,36 @@ export async function updateMission(formData: FormData) {
 
     return { success: true }
   } catch (error) {
-    console.error("[Action] updateMission error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "An error occurred",
-    }
+    return handleActionError(error, "updateMission", userId)
   }
 }
 
 export async function deleteMission(formData: FormData) {
+  let userId: string | undefined
   try {
-    const { userId, adminClient } = await getAuthorizedAdminClient()
+    const { userId: adminUserId, adminClient } = await getAuthorizedAdminClient()
+    userId = adminUserId
 
-    const id = formData.get("id") as string
-    if (!id) {
-      return { success: false, error: "Mission ID is required" }
+    const validation = validateFormData(formData, deleteMissionSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid mission ID",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
+
+    const { id } = validation.data
 
     const { error } = await adminClient.from("missions").delete().eq("id", id)
 
     if (error) {
-      return { success: false, error: "Failed to delete mission" }
+      logger.error("deleteMission - database delete", error, { userId })
+      return {
+        success: false,
+        error: "Failed to delete mission. Please try again",
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     revalidatePath("/admin")
@@ -409,15 +581,17 @@ export async function deleteMission(formData: FormData) {
 
     return { success: true }
   } catch (error) {
-    console.error("[Action] deleteMission error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "An error occurred",
-    }
+    return handleActionError(error, "deleteMission", userId)
   }
 }
 
-export async function updateAvatar(formData: FormData) {
+/**
+ * Updates user avatar
+ * @param {FormData} formData - Form data containing avatar file
+ * @returns {Promise<AvatarUpdateResponse>} Success status and new avatar URL
+ */
+export async function updateAvatar(formData: FormData): Promise<AvatarUpdateResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -426,22 +600,25 @@ export async function updateAvatar(formData: FormData) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "Not authenticated" }
+      return {
+        success: false,
+        error: "You must be logged in to update your avatar",
+        errorCode: ActionErrorCode.AUTH_ERROR,
+      }
     }
 
-    const file = formData.get("avatar") as File
+    userId = user.id
 
-    if (!file || file.size === 0) {
-      return { success: false, error: "No file provided" }
+    const validation = validateFormData(formData, updateAvatarSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid avatar file",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
 
-    if (!file.type.startsWith("image/")) {
-      return { success: false, error: "File must be an image" }
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      return { success: false, error: "File size must be less than 5MB" }
-    }
+    const { avatar: file } = validation.data
 
     const fileExt = file.name.split(".").pop()
     const fileName = `${user.id}/avatar.${fileExt}`
@@ -449,7 +626,12 @@ export async function updateAvatar(formData: FormData) {
     const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, file, { upsert: true })
 
     if (uploadError) {
-      return { success: false, error: `Upload failed: ${uploadError.message}` }
+      logger.error("updateAvatar - storage upload", uploadError, { userId })
+      return {
+        success: false,
+        error: `Upload failed: ${uploadError.message}`,
+        errorCode: ActionErrorCode.STORAGE_ERROR,
+      }
     }
 
     const {
@@ -459,20 +641,30 @@ export async function updateAvatar(formData: FormData) {
     const { error: updateError } = await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id)
 
     if (updateError) {
-      return { success: false, error: `Profile update failed: ${updateError.message}` }
+      logger.error("updateAvatar - profile update", updateError, { userId })
+      return {
+        success: false,
+        error: `Profile update failed: ${updateError.message}`,
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     revalidatePath("/account")
-    return { success: true, avatar_url: publicUrl }
+    return { success: true, data: { avatar_url: publicUrl } }
   } catch (error) {
-    console.error("[Action] updateAvatar error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "updateAvatar", userId)
   }
 }
 
-export async function exportAllData() {
+/**
+ * Exports all data from the application
+ * @returns {Promise<ExportDataResponse>} Exported data on success
+ */
+export async function exportAllData(): Promise<ExportDataResponse> {
+  let userId: string | undefined
   try {
-    const { userId, adminClient } = await getAuthorizedAdminClient()
+    const { userId: adminUserId, adminClient } = await getAuthorizedAdminClient()
+    userId = adminUserId
 
     const [missionsResult, profilesResult, submissionsResult, resourcesResult, noticeboardResult] = await Promise.all([
       adminClient.from("missions").select("*"),
@@ -482,14 +674,36 @@ export async function exportAllData() {
       adminClient.from("noticeboard_items").select("*"),
     ])
 
-    if (missionsResult.error) return { success: false, error: `Missions fetch error: ${missionsResult.error.message}` }
-    if (profilesResult.error) return { success: false, error: `Profiles fetch error: ${profilesResult.error.message}` }
+    if (missionsResult.error)
+      return {
+        success: false,
+        error: `Missions fetch error: ${missionsResult.error.message}`,
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
+    if (profilesResult.error)
+      return {
+        success: false,
+        error: `Profiles fetch error: ${profilesResult.error.message}`,
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     if (submissionsResult.error)
-      return { success: false, error: `Submissions fetch error: ${submissionsResult.error.message}` }
+      return {
+        success: false,
+        error: `Submissions fetch error: ${submissionsResult.error.message}`,
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     if (resourcesResult.error)
-      return { success: false, error: `Resources fetch error: ${resourcesResult.error.message}` }
+      return {
+        success: false,
+        error: `Resources fetch error: ${resourcesResult.error.message}`,
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     if (noticeboardResult.error)
-      return { success: false, error: `Noticeboard fetch error: ${noticeboardResult.error.message}` }
+      return {
+        success: false,
+        error: `Noticeboard fetch error: ${noticeboardResult.error.message}`,
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
 
     const missionsMap = new Map(missionsResult.data?.map((m) => [m.id, m]) || [])
     const profilesMap = new Map(profilesResult.data?.map((p) => [p.id, p]) || [])
@@ -499,7 +713,7 @@ export async function exportAllData() {
         const mission = missionsMap.get(submission.mission_id)
         const profile = profilesMap.get(submission.user_id)
 
-        const baseSubmission = {
+        const baseSubmission: Record<string, JsonValue> = {
           id: submission.id,
           created_at: submission.created_at,
           user_name: profile?.name || "Unknown User",
@@ -514,10 +728,10 @@ export async function exportAllData() {
 
         if (submission.answers && mission?.submission_schema) {
           const schema = mission.submission_schema
-          const answers = submission.answers
+          const answers = submission.answers as Record<string, JsonValue>
 
           if (Array.isArray(schema)) {
-            schema.forEach((field: any, index: number) => {
+            schema.forEach((field, index: number) => {
               const fieldKey = field.name || field.label || `question_${index + 1}`
               const answerKey = `answer_${index + 1}_${fieldKey.replace(/[^a-zA-Z0-9]/g, "_")}`
               const questionKey = `question_${index + 1}_${fieldKey.replace(/[^a-zA-Z0-9]/g, "_")}`
@@ -528,7 +742,13 @@ export async function exportAllData() {
           }
         }
 
-        return baseSubmission
+        return baseSubmission as Submission & {
+          user_name: string
+          user_email: string
+          mission_title: string
+          answers_raw: string | null
+          [key: string]: JsonValue
+        }
       }) || []
 
     return {
@@ -542,15 +762,18 @@ export async function exportAllData() {
       },
     }
   } catch (error) {
-    console.error("[Action] exportAllData error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
-    }
+    return handleActionError(error, "exportAllData", userId)
   }
 }
 
-export async function fetchAllCommunityActivity() {
+/**
+ * Fetches recent community activity with pagination
+ * @param {number} page - Page number (default: 1)
+ * @param {number} limit - Items per page (default: 10)
+ * @returns {Promise<CommunityActivityResponse>} List of recent activities with pagination metadata
+ */
+export async function fetchAllCommunityActivity(page = 1, limit = 10): Promise<CommunityActivityResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
 
@@ -560,21 +783,52 @@ export async function fetchAllCommunityActivity() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "Not authenticated", data: [] }
+      return {
+        success: false,
+        error: "You must be logged in to view community activity",
+        errorCode: ActionErrorCode.AUTH_ERROR,
+      }
+    }
+    userId = user.id
+
+    const validation = paginationSchema.safeParse({ page, limit })
+    if (!validation.success) {
+      return {
+        success: false,
+        error: "Invalid pagination parameters",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
 
-    const { data: submissions, error: submissionsError } = await supabase
+    const { page: validPage, limit: validLimit } = validation.data
+    const offset = (validPage - 1) * validLimit
+
+    const {
+      data: submissions,
+      error: submissionsError,
+      count: totalSubmissions,
+    } = await supabase
       .from("submissions")
-      .select("id, created_at, points_awarded, status, user_id, mission_id")
+      .select("id, created_at, points_awarded, status, user_id, mission_id", { count: "exact" })
       .eq("status", "approved")
       .order("created_at", { ascending: false })
-      .limit(10)
+      .range(offset, offset + validLimit - 1)
 
     if (submissionsError) {
       if (submissionsError.message?.includes("Too Many Requests") || submissionsError.message?.includes("rate limit")) {
-        return { success: true, data: [] }
+        return {
+          success: true,
+          data: [],
+          pagination: {
+            page: validPage,
+            limit: validLimit,
+            total: 0,
+            hasMore: false,
+          },
+        }
       }
-      return { success: false, error: "Failed to fetch activity", data: [] }
+      logger.error("fetchAllCommunityActivity - submissions fetch", submissionsError, { userId })
+      return { success: false, error: "Failed to fetch activity", errorCode: ActionErrorCode.DATABASE_ERROR }
     }
 
     const { data: profileActivities, error: profileActivitiesError } = await supabase
@@ -582,7 +836,18 @@ export async function fetchAllCommunityActivity() {
       .select("id, created_at, user_id, changed_fields")
       .eq("activity_type", "profile_updated")
       .order("created_at", { ascending: false })
-      .limit(5)
+      .range(0, Math.min(5, validLimit) - 1)
+
+    if (profileActivitiesError) {
+      if (
+        profileActivitiesError.message?.includes("Too Many Requests") ||
+        profileActivitiesError.message?.includes("rate limit")
+      ) {
+        // Silently ignore rate limit errors for this part
+      } else {
+        logger.error("fetchAllCommunityActivity - profile activities fetch", profileActivitiesError, { userId })
+      }
+    }
 
     const allActivities = []
 
@@ -590,7 +855,11 @@ export async function fetchAllCommunityActivity() {
       const userIds = [...new Set(submissions.map((s) => s.user_id))]
       const missionIds = [...new Set(submissions.map((s) => s.mission_id))]
 
-      const { data: profiles } = await supabase.from("profiles").select("id, name, avatar_url").in("id", userIds)
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, name, avatar_url")
+        .in("id", userIds)
+        .eq("is_deleted", false)
 
       const { data: missions } = await supabase.from("missions").select("id, title").in("id", missionIds)
 
@@ -611,7 +880,7 @@ export async function fetchAllCommunityActivity() {
           user_avatar_url: profile?.avatar_url || null,
           user_id: submission.user_id,
           status: submission.status,
-          type: "submission",
+          type: "submission" as const,
         })
       })
     }
@@ -623,6 +892,7 @@ export async function fetchAllCommunityActivity() {
         .from("profiles")
         .select("id, name, avatar_url")
         .in("id", profileUserIds)
+        .eq("is_deleted", false)
 
       if (profileUsers) {
         const profileUsersMap = new Map(profileUsers.map((p) => [p.id, p]))
@@ -639,8 +909,8 @@ export async function fetchAllCommunityActivity() {
             user_avatar_url: profile?.avatar_url || null,
             user_id: activity.user_id,
             status: "profile_updated",
-            type: "profile_update",
-            changed_fields: activity.changed_fields,
+            type: "profile_update" as const,
+            changed_fields: activity.changed_fields || undefined,
           })
         })
       }
@@ -648,34 +918,42 @@ export async function fetchAllCommunityActivity() {
 
     const sortedActivities = allActivities
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 10)
+      .slice(0, validLimit)
 
-    return { success: true, data: sortedActivities }
-  } catch (error) {
-    console.error("[Action] fetchAllCommunityActivity error:", error)
     return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
-      data: [],
+      success: true,
+      data: sortedActivities,
+      pagination: {
+        page: validPage,
+        limit: validLimit,
+        total: totalSubmissions || 0,
+        hasMore: (totalSubmissions || 0) > offset + validLimit,
+      },
     }
+  } catch (error) {
+    return handleActionError(error, "fetchAllCommunityActivity", userId)
   }
 }
 
+/**
+ * Handles user sign up
+ * @param {FormData} formData - Form data containing user credentials and profile info
+ * @returns {Promise<ActionResponse>} Success status and any error details
+ */
 export async function signUp(formData: FormData) {
   try {
     const supabase = await createClient()
 
-    const email = formData.get("email") as string
-    const password = formData.get("password") as string
-    const name = formData.get("name") as string
-    const jobTitle = formData.get("job_title") as string
-    const department = formData.get("department") as string
-    const bio = formData.get("bio") as string
-    const country = formData.get("country") as string
-
-    if (!email || !password || !name || !jobTitle || !department || !bio || !country) {
-      return { success: false, error: "All fields are required" }
+    const validation = validateFormData(formData, signUpSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid sign up data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
+
+    const { email, password, name, job_title, department, bio, country } = validation.data
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -686,7 +964,8 @@ export async function signUp(formData: FormData) {
     })
 
     if (error) {
-      return { success: false, error: error.message }
+      logger.error("signUp - auth signup", error)
+      return { success: false, error: error.message, errorCode: ActionErrorCode.AUTH_ERROR }
     }
 
     if (data.user) {
@@ -697,10 +976,10 @@ export async function signUp(formData: FormData) {
           id: data.user.id,
           name,
           email,
-          job_title: jobTitle,
+          job_title,
           department,
-          bio: bio,
-          country: country,
+          bio,
+          country,
           total_points: 0,
         },
         {
@@ -709,22 +988,42 @@ export async function signUp(formData: FormData) {
       )
 
       if (profileError) {
-        return { success: false, error: "Profile creation error: " + profileError.message }
+        logger.error("signUp - profile upsert", profileError)
+        return {
+          success: false,
+          error: "Profile creation error: " + profileError.message,
+          errorCode: ActionErrorCode.DATABASE_ERROR,
+        }
       }
     }
 
-    return { success: true }
+    return { success: true, data: undefined }
   } catch (error) {
-    console.error("[Action] signUp error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "signUp")
   }
 }
 
+/**
+ * Updates the display order of missions
+ * @param {Array<{id: string, display_order: number}>} missions - Array of missions with their new display order
+ * @returns {Promise<ActionResponse>} Success status and any error details
+ */
 export async function updateMissionOrder(missions: Array<{ id: string; display_order: number }>) {
+  let userId: string | undefined
   try {
-    const { userId, adminClient } = await getAuthorizedAdminClient()
+    const { userId: adminUserId, adminClient } = await getAuthorizedAdminClient()
+    userId = adminUserId
 
-    const updatePromises = missions.map(async (mission) => {
+    const validation = updateMissionOrderSchema.safeParse(missions)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid mission order data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
+    }
+
+    const updatePromises = validation.data.map(async (mission) => {
       const { error } = await adminClient
         .from("missions")
         .update({ display_order: mission.display_order })
@@ -737,17 +1036,19 @@ export async function updateMissionOrder(missions: Array<{ id: string; display_o
     await Promise.all(updatePromises)
 
     revalidatePath("/admin")
-    return { success: true }
+    return { success: true, data: undefined }
   } catch (error) {
-    console.error("[Action] updateMissionOrder error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to update mission order",
-    }
+    return handleActionError(error, "updateMissionOrder", userId)
   }
 }
 
-export async function saveDraft(formData: FormData) {
+/**
+ * Saves or updates a draft submission
+ * @param {FormData} formData - Form data containing draft details
+ * @returns {Promise<DraftResponse>} Success status and any error details
+ */
+export async function saveDraft(formData: FormData): Promise<DraftResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -756,20 +1057,34 @@ export async function saveDraft(formData: FormData) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "User not authenticated" }
+      return { success: false, error: "You must be logged in to save a draft", errorCode: ActionErrorCode.AUTH_ERROR }
     }
 
-    const missionId = formData.get("missionId") as string
-    const answersString = formData.get("answers") as string
-    const textSubmission = formData.get("textSubmission") as string
-    const existingDraftId = formData.get("existingDraftId") as string | null
-    const mediaFile = formData.get("mediaFile") as File | null
+    userId = user.id
 
-    if (!missionId) {
-      return { success: false, error: "Mission ID is required" }
+    const validation = validateFormData(formData, saveDraftSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid draft data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
 
-    let mediaUrl = null
+    const { missionId, textSubmission, answers, mediaFile, existingDraftId } = validation.data
+
+    const { data: existingDraft } = await supabase
+      .from("submissions")
+      .select("id, media_url")
+      .eq("mission_id", missionId)
+      .eq("user_id", user.id)
+      .eq("status", "draft")
+      .maybeSingle()
+
+    const draftIdToUse = existingDraftId || existingDraft?.id
+    const oldMediaUrl = existingDraft?.media_url
+
+    let mediaUrl = oldMediaUrl
 
     if (mediaFile && mediaFile.size > 0) {
       const fileExt = mediaFile.name.split(".").pop()
@@ -781,7 +1096,12 @@ export async function saveDraft(formData: FormData) {
         .upload(filePath, mediaFile)
 
       if (uploadError) {
-        return { success: false, error: "Failed to upload media" }
+        logger.error("saveDraft - media upload", uploadError, { userId })
+        return {
+          success: false,
+          error: "Failed to upload media. Please try again",
+          errorCode: ActionErrorCode.STORAGE_ERROR,
+        }
       }
 
       const {
@@ -789,21 +1109,28 @@ export async function saveDraft(formData: FormData) {
       } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
 
       mediaUrl = publicUrl
+
+      if (oldMediaUrl && oldMediaUrl !== mediaUrl) {
+        try {
+          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
+          if (oldPath) {
+            await supabase.storage.from("submissions-media").remove([oldPath])
+          }
+        } catch (cleanupError) {
+          logger.error("saveDraft - media cleanup", cleanupError, { userId })
+        }
+      }
     }
 
-    const draftData: any = {
+    const draftData: Partial<Submission> = {
       mission_id: missionId,
       user_id: user.id,
       status: "draft",
       updated_at: new Date().toISOString(),
     }
 
-    if (answersString) {
-      try {
-        draftData.answers = JSON.parse(answersString)
-      } catch (error) {
-        return { success: false, error: "Invalid answers format" }
-      }
+    if (answers) {
+      draftData.answers = answers as Record<string, JsonValue>
     } else if (textSubmission) {
       draftData.text_submission = textSubmission
     }
@@ -812,34 +1139,49 @@ export async function saveDraft(formData: FormData) {
       draftData.media_url = mediaUrl
     }
 
-    if (existingDraftId) {
+    if (draftIdToUse) {
       const { error } = await supabase
         .from("submissions")
         .update(draftData)
-        .eq("id", existingDraftId)
+        .eq("id", draftIdToUse)
         .eq("user_id", user.id)
 
       if (error) {
-        return { success: false, error: "Failed to update draft" }
+        logger.error("saveDraft - database update", error, { userId })
+        return {
+          success: false,
+          error: "Failed to save progress. Please try again",
+          errorCode: ActionErrorCode.DATABASE_ERROR,
+        }
       }
     } else {
       draftData.created_at = new Date().toISOString()
       const { error } = await supabase.from("submissions").insert(draftData)
 
       if (error) {
-        return { success: false, error: "Failed to create draft" }
+        logger.error("saveDraft - database insert", error, { userId })
+        return {
+          success: false,
+          error: "Failed to save progress. Please try again",
+          errorCode: ActionErrorCode.DATABASE_ERROR,
+        }
       }
     }
 
     revalidatePath(`/mission/${missionId}`)
-    return { success: true }
+    return { success: true, data: undefined }
   } catch (error) {
-    console.error("[Action] saveDraft error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "saveDraft", userId)
   }
 }
 
-export async function deleteDraft(draftId: string) {
+/**
+ * Deletes a draft submission
+ * @param {string} draftId - ID of the draft to delete
+ * @returns {Promise<DraftResponse>} Success status and any error details
+ */
+export async function deleteDraft(draftId: string): Promise<DraftResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -848,7 +1190,18 @@ export async function deleteDraft(draftId: string) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "User not authenticated" }
+      return { success: false, error: "You must be logged in to delete a draft", errorCode: ActionErrorCode.AUTH_ERROR }
+    }
+
+    userId = user.id
+
+    const validation = deleteDraftSchema.safeParse({ draftId })
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid draft ID",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
 
     const { data: draft } = await supabase
@@ -856,26 +1209,40 @@ export async function deleteDraft(draftId: string) {
       .select("mission_id")
       .eq("id", draftId)
       .eq("user_id", user.id)
-      .single()
+      .maybeSingle()
+
+    if (!draft) {
+      return { success: false, error: "Draft not found or already deleted", errorCode: ActionErrorCode.NOT_FOUND }
+    }
 
     const { error } = await supabase.from("submissions").delete().eq("id", draftId).eq("user_id", user.id)
 
     if (error) {
-      return { success: false, error: "Failed to delete draft" }
+      logger.error("deleteDraft - database delete", error, { userId })
+      return {
+        success: false,
+        error: "Failed to delete draft. Please try again",
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     if (draft?.mission_id) {
       revalidatePath(`/mission/${draft.mission_id}`)
     }
 
-    return { success: true }
+    return { success: true, data: undefined }
   } catch (error) {
-    console.error("[Action] deleteDraft error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "deleteDraft", userId)
   }
 }
 
-export async function updateSubmission(formData: FormData) {
+/**
+ * Updates an existing submission
+ * @param {FormData} formData - Form data containing updated submission details
+ * @returns {Promise<UpdateSubmissionResponse>} Success status and whether submission was previously approved
+ */
+export async function updateSubmission(formData: FormData): Promise<UpdateSubmissionResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -884,40 +1251,56 @@ export async function updateSubmission(formData: FormData) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "User not authenticated" }
+      return {
+        success: false,
+        error: "You must be logged in to update a submission",
+        errorCode: ActionErrorCode.AUTH_ERROR,
+      }
     }
 
-    const submissionId = formData.get("submissionId") as string
-    const answersString = formData.get("answers") as string | null
-    const textSubmission = formData.get("textSubmission") as string | null
-    const mediaFile = formData.get("mediaFile") as File | null
-    const removedMediaUrls = formData.get("removedMediaUrls") as string | null
+    userId = user.id
 
-    if (!submissionId) {
-      return { success: false, error: "Submission ID is required" }
+    const validation = validateFormData(formData, updateSubmissionSchema)
+    if (!validation.success) {
+      return {
+        success: false,
+        error: validation.error.errors[0]?.message || "Invalid submission data",
+        errorCode: ActionErrorCode.VALIDATION_ERROR,
+      }
     }
+
+    const { submissionId, textSubmission, answers, mediaFile, removedMediaUrls } = validation.data
 
     const { data: currentSubmission, error: fetchError } = await supabase
       .from("submissions")
       .select("status, media_url, mission_id")
       .eq("id", submissionId)
       .eq("user_id", user.id)
-      .single()
+      .maybeSingle()
 
     if (fetchError || !currentSubmission) {
-      return { success: false, error: "Submission not found" }
+      return {
+        success: false,
+        error: "Submission not found or you don't have permission to edit it",
+        errorCode: ActionErrorCode.NOT_FOUND,
+      }
     }
 
     let finalMediaUrl = currentSubmission.media_url
+    const oldMediaUrl = currentSubmission.media_url
 
-    if (removedMediaUrls) {
-      try {
-        const removedUrls = JSON.parse(removedMediaUrls)
-        if (Array.isArray(removedUrls) && removedUrls.includes(currentSubmission.media_url)) {
-          finalMediaUrl = null
+    if (removedMediaUrls && removedMediaUrls.includes(currentSubmission.media_url || "")) {
+      finalMediaUrl = null
+
+      if (oldMediaUrl) {
+        try {
+          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
+          if (oldPath) {
+            await supabase.storage.from("submissions-media").remove([oldPath])
+          }
+        } catch (cleanupError) {
+          logger.error("updateSubmission - media cleanup", cleanupError, { userId })
         }
-      } catch (error) {
-        console.error("[Action] Error parsing removed media URLs:", error)
       }
     }
 
@@ -931,7 +1314,12 @@ export async function updateSubmission(formData: FormData) {
         .upload(filePath, mediaFile)
 
       if (uploadError) {
-        return { success: false, error: "Failed to upload media" }
+        logger.error("updateSubmission - media upload", uploadError, { userId })
+        return {
+          success: false,
+          error: "Failed to upload media. Please try again",
+          errorCode: ActionErrorCode.STORAGE_ERROR,
+        }
       }
 
       const {
@@ -939,26 +1327,35 @@ export async function updateSubmission(formData: FormData) {
       } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
 
       finalMediaUrl = publicUrl
+
+      if (oldMediaUrl && oldMediaUrl !== finalMediaUrl) {
+        try {
+          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
+          if (oldPath) {
+            await supabase.storage.from("submissions-media").remove([oldPath])
+          }
+        } catch (cleanupError) {
+          logger.error("updateSubmission - old media cleanup", cleanupError, { userId })
+        }
+      }
     }
 
-    const updateData: any = {
+    const updateData: Partial<Submission> = {
       media_url: finalMediaUrl,
       updated_at: new Date().toISOString(),
     }
 
-    if (answersString) {
-      try {
-        updateData.answers = JSON.parse(answersString)
-      } catch (error) {
-        return { success: false, error: "Invalid answers format" }
-      }
+    if (answers) {
+      updateData.answers = answers as Record<string, JsonValue>
     } else if (textSubmission) {
       updateData.text_submission = textSubmission
     }
 
-    if (currentSubmission.status === "approved") {
+    if (currentSubmission.status === "approved" || currentSubmission.status === "rejected") {
       updateData.status = "pending"
-      updateData.points_awarded = 0
+      if (currentSubmission.status === "approved") {
+        updateData.points_awarded = 0
+      }
     }
 
     const { error } = await supabase
@@ -968,18 +1365,28 @@ export async function updateSubmission(formData: FormData) {
       .eq("user_id", user.id)
 
     if (error) {
-      return { success: false, error: "Failed to update submission" }
+      logger.error("updateSubmission - database update", error, { userId })
+      return {
+        success: false,
+        error: "Failed to update submission. Please try again",
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     revalidatePath(`/mission/${currentSubmission.mission_id}`)
-    return { success: true, wasApproved: currentSubmission.status === "approved" }
+    return { success: true, data: { wasApproved: currentSubmission.status === "approved" } }
   } catch (error) {
-    console.error("[Action] updateSubmission error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "updateSubmission", userId)
   }
 }
 
-export async function submitDraftAsFinal(formData: FormData) {
+/**
+ * Submits a draft as a final submission
+ * @param {FormData} formData - Form data containing draft ID and any final changes
+ * @returns {Promise<SubmitDraftResponse>} Success status and mission ID
+ */
+export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraftResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -988,8 +1395,10 @@ export async function submitDraftAsFinal(formData: FormData) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "User not authenticated" }
+      return { success: false, error: "You must be logged in to submit", errorCode: ActionErrorCode.AUTH_ERROR }
     }
+
+    userId = user.id
 
     const draftId = formData.get("draftId") as string
     const answersString = formData.get("answers") as string | null
@@ -997,7 +1406,7 @@ export async function submitDraftAsFinal(formData: FormData) {
     const mediaFile = formData.get("mediaFile") as File | null
 
     if (!draftId) {
-      return { success: false, error: "Draft ID is required" }
+      return { success: false, error: "Draft ID is required", errorCode: ActionErrorCode.VALIDATION_ERROR }
     }
 
     const { data: draft, error: fetchError } = await supabase
@@ -1006,13 +1415,14 @@ export async function submitDraftAsFinal(formData: FormData) {
       .eq("id", draftId)
       .eq("user_id", user.id)
       .eq("status", "draft")
-      .single()
+      .maybeSingle()
 
     if (fetchError || !draft) {
-      return { success: false, error: "Draft not found" }
+      return { success: false, error: "Draft not found or already submitted", errorCode: ActionErrorCode.NOT_FOUND }
     }
 
     let finalMediaUrl = draft.media_url
+    const oldMediaUrl = draft.media_url
 
     if (mediaFile && mediaFile.size > 0) {
       const fileExt = mediaFile.name.split(".").pop()
@@ -1024,7 +1434,12 @@ export async function submitDraftAsFinal(formData: FormData) {
         .upload(filePath, mediaFile)
 
       if (uploadError) {
-        return { success: false, error: "Failed to upload media" }
+        logger.error("submitDraftAsFinal - media upload", uploadError, { userId })
+        return {
+          success: false,
+          error: "Failed to upload media. Please try again",
+          errorCode: ActionErrorCode.STORAGE_ERROR,
+        }
       }
 
       const {
@@ -1032,9 +1447,20 @@ export async function submitDraftAsFinal(formData: FormData) {
       } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
 
       finalMediaUrl = publicUrl
+
+      if (oldMediaUrl && oldMediaUrl !== finalMediaUrl) {
+        try {
+          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
+          if (oldPath) {
+            await supabase.storage.from("submissions-media").remove([oldPath])
+          }
+        } catch (cleanupError) {
+          logger.error("submitDraftAsFinal - media cleanup", cleanupError, { userId })
+        }
+      }
     }
 
-    const updateData: any = {
+    const updateData: Partial<Submission> = {
       status: "pending",
       media_url: finalMediaUrl,
       updated_at: new Date().toISOString(),
@@ -1042,9 +1468,9 @@ export async function submitDraftAsFinal(formData: FormData) {
 
     if (answersString) {
       try {
-        updateData.answers = JSON.parse(answersString)
+        updateData.answers = JSON.parse(answersString) as Record<string, JsonValue>
       } catch (error) {
-        return { success: false, error: "Invalid answers format" }
+        return { success: false, error: "Invalid form data format", errorCode: ActionErrorCode.VALIDATION_ERROR }
       }
     } else if (textSubmission) {
       updateData.text_submission = textSubmission
@@ -1053,18 +1479,24 @@ export async function submitDraftAsFinal(formData: FormData) {
     const { error } = await supabase.from("submissions").update(updateData).eq("id", draftId).eq("user_id", user.id)
 
     if (error) {
-      return { success: false, error: "Failed to submit draft" }
+      logger.error("submitDraftAsFinal - database update", error, { userId })
+      return { success: false, error: "Failed to submit. Please try again", errorCode: ActionErrorCode.DATABASE_ERROR }
     }
 
     revalidatePath(`/mission/${draft.mission_id}`)
-    return { success: true, missionId: draft.mission_id }
+    return { success: true, data: { missionId: draft.mission_id } }
   } catch (error) {
-    console.error("[Action] submitDraftAsFinal error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "submitDraftAsFinal", userId)
   }
 }
 
-export async function createNewSubmission(formData: FormData) {
+/**
+ * Creates a new submission
+ * @param {FormData} formData - Form data containing submission details
+ * @returns {Promise<SubmissionResponse>} Success status and any error details
+ */
+export async function createNewSubmission(formData: FormData): Promise<SubmissionResponse> {
+  let userId: string | undefined
   try {
     const supabase = await createClient()
     const {
@@ -1073,8 +1505,10 @@ export async function createNewSubmission(formData: FormData) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return { success: false, error: "User not authenticated" }
+      return { success: false, error: "You must be logged in to submit", errorCode: ActionErrorCode.AUTH_ERROR }
     }
+
+    userId = user.id
 
     const missionId = formData.get("missionId") as string
     const answersString = formData.get("answers") as string | null
@@ -1082,7 +1516,7 @@ export async function createNewSubmission(formData: FormData) {
     const mediaFile = formData.get("mediaFile") as File | null
 
     if (!missionId) {
-      return { success: false, error: "Mission ID is required" }
+      return { success: false, error: "Mission ID is required", errorCode: ActionErrorCode.VALIDATION_ERROR }
     }
 
     let mediaUrl = null
@@ -1097,7 +1531,12 @@ export async function createNewSubmission(formData: FormData) {
         .upload(filePath, mediaFile)
 
       if (uploadError) {
-        return { success: false, error: "Failed to upload media" }
+        logger.error("createNewSubmission - media upload", uploadError, { userId })
+        return {
+          success: false,
+          error: "Failed to upload media. Please try again",
+          errorCode: ActionErrorCode.STORAGE_ERROR,
+        }
       }
 
       const {
@@ -1107,7 +1546,7 @@ export async function createNewSubmission(formData: FormData) {
       mediaUrl = publicUrl
     }
 
-    const submissionData: any = {
+    const submissionData: Partial<Submission> = {
       mission_id: missionId,
       user_id: user.id,
       status: "pending",
@@ -1117,9 +1556,9 @@ export async function createNewSubmission(formData: FormData) {
 
     if (answersString) {
       try {
-        submissionData.answers = JSON.parse(answersString)
+        submissionData.answers = JSON.parse(answersString) as Record<string, JsonValue>
       } catch (error) {
-        return { success: false, error: "Invalid answers format" }
+        return { success: false, error: "Invalid form data format", errorCode: ActionErrorCode.VALIDATION_ERROR }
       }
     } else if (textSubmission) {
       submissionData.text_submission = textSubmission
@@ -1128,13 +1567,17 @@ export async function createNewSubmission(formData: FormData) {
     const { error } = await supabase.from("submissions").insert(submissionData)
 
     if (error) {
-      return { success: false, error: "Failed to create submission" }
+      logger.error("createNewSubmission - database insert", error, { userId })
+      return {
+        success: false,
+        error: "Failed to create submission. Please try again",
+        errorCode: ActionErrorCode.DATABASE_ERROR,
+      }
     }
 
     revalidatePath(`/mission/${missionId}`)
-    return { success: true }
+    return { success: true, data: undefined }
   } catch (error) {
-    console.error("[Action] createNewSubmission error:", error)
-    return { success: false, error: "An error occurred" }
+    return handleActionError(error, "createNewSubmission", userId)
   }
 }

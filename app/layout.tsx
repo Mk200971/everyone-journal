@@ -15,7 +15,9 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
+  preload: true,
+  fallback: ["system-ui", "arial"],
 })
 
 export const viewport = {
@@ -42,6 +44,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://cicquptmhxepsdibvoag.supabase.co" />
+        <link rel="dns-prefetch" href="https://cicquptmhxepsdibvoag.supabase.co" />
+        <link rel="preconnect" href="https://vercel.live" />
+      </head>
       <body className={`font-sans ${inter.variable} antialiased flex flex-col min-h-screen`}>
         <ErrorBoundary>
           <div className="flex justify-center pb-0">

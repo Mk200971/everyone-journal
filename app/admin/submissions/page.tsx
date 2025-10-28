@@ -23,6 +23,7 @@ import {
   deleteSubmissionAdmin,
   type AdminSubmission,
 } from "@/lib/admin-actions"
+import { AdminSubmissionsSkeleton } from "@/components/skeleton-loaders"
 
 export default function SubmissionReviewPage() {
   const [submissions, setSubmissions] = useState<AdminSubmission[]>([])
@@ -96,10 +97,19 @@ export default function SubmissionReviewPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-black dark:to-purple-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p>Loading submissions...</p>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-black dark:to-purple-900">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-6xl mx-auto space-y-6">
+            <header className="sticky top-0 z-50 py-6 mb-12 bg-white/10 dark:bg-black/20 backdrop-blur-xl border-b border-white/20 dark:border-white/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-4xl font-bold text-foreground mb-2">Submission Review</h1>
+                  <p className="text-muted-foreground text-lg">Loading submissions...</p>
+                </div>
+              </div>
+            </header>
+            <AdminSubmissionsSkeleton />
+          </div>
         </div>
       </div>
     )

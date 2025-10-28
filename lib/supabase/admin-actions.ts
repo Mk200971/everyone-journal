@@ -2,6 +2,16 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
+import { logger } from "@/lib/logger"
+
+type MissionUpdateData = {
+  title: string
+  description: string
+  type: string
+  resource_id: string | null
+  points_value: number
+  image_url?: string
+}
 
 export async function createMission(formData: FormData) {
   const cookieStore = await cookies()
@@ -40,7 +50,7 @@ export async function createMission(formData: FormData) {
       .upload(fileName, missionImage)
 
     if (uploadError) {
-      console.error("Error uploading image:", uploadError)
+      logger.error("Error uploading image", uploadError, { action: "createMission" })
     } else {
       const {
         data: { publicUrl },
@@ -59,7 +69,7 @@ export async function createMission(formData: FormData) {
   })
 
   if (error) {
-    console.error("Error creating mission:", error)
+    logger.error("Error creating mission", error, { action: "createMission" })
     throw new Error("Failed to create mission")
   }
 
@@ -94,7 +104,7 @@ export async function updateMission(formData: FormData) {
   const pointsValue = Number.parseInt(formData.get("points_value") as string)
   const missionImage = formData.get("mission_image") as File
 
-  const updateData: any = {
+  const updateData: MissionUpdateData = {
     title,
     description,
     type,
@@ -111,7 +121,7 @@ export async function updateMission(formData: FormData) {
       .upload(fileName, missionImage)
 
     if (uploadError) {
-      console.error("Error uploading image:", uploadError)
+      logger.error("Error uploading image", uploadError, { action: "updateMission" })
     } else {
       const {
         data: { publicUrl },
@@ -123,7 +133,7 @@ export async function updateMission(formData: FormData) {
   const { error } = await supabase.from("missions").update(updateData).eq("id", id)
 
   if (error) {
-    console.error("Error updating mission:", error)
+    logger.error("Error updating mission", error, { action: "updateMission" })
     throw new Error("Failed to update mission")
   }
 
@@ -155,7 +165,7 @@ export async function deleteMission(formData: FormData) {
   const { error } = await supabase.from("missions").delete().eq("id", id)
 
   if (error) {
-    console.error("Error deleting mission:", error)
+    logger.error("Error deleting mission", error, { action: "deleteMission" })
     throw new Error("Failed to delete mission")
   }
 

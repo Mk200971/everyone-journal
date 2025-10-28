@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
+import { logger } from "@/lib/logger"
 
 export interface AdminSubmission {
   id: string
@@ -13,12 +14,17 @@ export interface AdminSubmission {
   points_awarded: number
   created_at: string
   updated_at: string
-  answers: any
+  answers: Record<string, unknown> | null
   mission: {
     title: string
     description: string
     points_value: number
-    submission_schema?: any // Added submission_schema to interface
+    submission_schema?: {
+      fields?: Array<{
+        name?: string
+        label?: string
+      }>
+    } | null
   }
   profile: {
     name: string
@@ -40,11 +46,9 @@ export async function fetchAllSubmissions(): Promise<AdminSubmission[]> {
     if (missionsResult.error) throw missionsResult.error
     if (profilesResult.error) throw profilesResult.error
 
-    // Create lookup maps for efficient joining
     const missionsMap = new Map(missionsResult.data?.map((m) => [m.id, m]) || [])
     const profilesMap = new Map(profilesResult.data?.map((p) => [p.id, p]) || [])
 
-    // Join the data manually
     const transformedData =
       submissionsResult.data?.map((submission) => ({
         ...submission,
@@ -52,7 +56,7 @@ export async function fetchAllSubmissions(): Promise<AdminSubmission[]> {
           title: "Unknown Mission",
           description: "",
           points_value: 0,
-          submission_schema: null, // Added default submission_schema
+          submission_schema: null,
         },
         profile: profilesMap.get(submission.user_id) || {
           name: "Unknown User",
@@ -62,7 +66,7 @@ export async function fetchAllSubmissions(): Promise<AdminSubmission[]> {
 
     return transformedData
   } catch (error) {
-    console.error("Error fetching all submissions:", error)
+    logger.error("Error fetching all submissions", error, { action: "fetchAllSubmissions" })
     throw new Error("Failed to fetch submissions")
   }
 }
@@ -75,7 +79,7 @@ export async function updateSubmissionStatusAdmin(
   const supabase = createAdminClient()
 
   try {
-    const updateData: any = { status }
+    const updateData: Record<string, unknown> = { status }
     if (status === "approved" && pointsAwarded !== undefined) {
       updateData.points_awarded = pointsAwarded
     }
@@ -87,7 +91,10 @@ export async function updateSubmissionStatusAdmin(
     revalidatePath("/admin/submissions")
     return { success: true }
   } catch (error) {
-    console.error("Error updating submission:", error)
+    logger.error("Error updating submission", error, {
+      action: "updateSubmissionStatusAdmin",
+      metadata: { submissionId, status },
+    })
     throw new Error("Failed to update submission")
   }
 }
@@ -103,7 +110,7 @@ export async function deleteSubmissionAdmin(submissionId: string) {
     revalidatePath("/admin/submissions")
     return { success: true }
   } catch (error) {
-    console.error("Error deleting submission:", error)
+    logger.error("Error deleting submission", error, { action: "deleteSubmissionAdmin", metadata: { submissionId } })
     throw new Error("Failed to delete submission")
   }
 }

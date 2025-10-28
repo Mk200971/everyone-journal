@@ -3,6 +3,7 @@ import { Navbar } from "@/components/navbar"
 import { fetchAllCommunityActivity } from "@/lib/actions"
 import { createClient } from "@/lib/supabase/server"
 import { HomePageClient } from "@/components/home-page-client"
+import { logger } from "@/lib/logger"
 
 interface Mission {
   id: string
@@ -64,12 +65,17 @@ interface NoticeboardItem {
   display_order: number
 }
 
+interface User {
+  id: string
+  email: string
+}
+
 interface HomePageData {
   missions: Mission[]
   resources: Resource[]
   recentActivity: RecentActivity[]
   topUsers: LeaderboardEntry[]
-  user: any
+  user: User | null
   userProfile: { name: string } | null
   quotes: NoticeboardItem[]
 }
@@ -83,7 +89,9 @@ async function getHomePageData(): Promise<HomePageData> {
     error: userError,
   } = await supabase.auth.getUser()
 
-  console.log("[v0] Server-side user authentication:", user ? "authenticated" : "not authenticated", user?.id)
+  if (user) {
+    logger.info("User authenticated on home page", { userId: user.id })
+  }
 
   let userProfile = null
   if (user) {
@@ -93,7 +101,6 @@ async function getHomePageData(): Promise<HomePageData> {
       .eq("id", user.id)
       .single()
     userProfile = profile
-    console.log("[v0] User profile loaded:", profile?.name)
   }
 
   const [missionsResult, resourcesResult, activityResult, topUsersResult, quotesResult] = await Promise.allSettled([
@@ -152,9 +159,9 @@ async function getHomePageData(): Promise<HomePageData> {
     topUsersResult.status === "fulfilled" && topUsersResult.value.data ? topUsersResult.value.data : []
 
   const quotes = quotesResult.status === "fulfilled" && quotesResult.value.data ? quotesResult.value.data : []
-  console.log("[v0] Server-side quotes loaded:", quotes.length, "items")
+
   if (quotesResult.status === "rejected") {
-    console.error("[v0] Server-side quotes error:", quotesResult.reason)
+    logger.error("Failed to load quotes on home page", { error: quotesResult.reason })
   }
 
   const topUsers = await Promise.all(
@@ -190,15 +197,8 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 h-48 sm:w-72 sm:h-72 bg-primary/5 sm:bg-primary/10 rounded-full blur-2xl sm:blur-3xl animate-pulse"></div>
-        <div
-          className="absolute top-40 right-4 sm:right-20 w-64 h-64 sm:w-96 sm:h-96 bg-secondary/5 sm:bg-secondary/10 rounded-full blur-2xl sm:blur-3xl animate-pulse"
-          style={{ animationDelay: "2s" }}
-        ></div>
-        <div
-          className="absolute bottom-20 left-1/4 sm:left-1/3 w-56 h-56 sm:w-80 sm:h-80 bg-accent/5 sm:bg-accent/10 rounded-full blur-2xl sm:blur-3xl animate-pulse"
-          style={{ animationDelay: "4s" }}
-        ></div>
+        <div className="absolute top-20 left-4 sm:left-10 w-48 h-48 sm:w-64 sm:h-64 bg-primary/5 rounded-full blur-3xl opacity-50"></div>
+        <div className="absolute top-40 right-4 sm:right-20 w-56 h-56 sm:w-72 sm:h-72 bg-secondary/5 rounded-full blur-3xl opacity-50"></div>
       </div>
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 max-w-7xl">

@@ -8,8 +8,8 @@ const nextConfig = {
   },
   images: {
     domains: ['hebbkx1anhila5yf.public.blob.vercel-storage.com', 'blob.vercel-storage.com', 'cicquptmhxepsdibvoag.supabase.co'],
-    formats: ['image/webp'],
-    minimumCacheTTL: 2678400,
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 31536000,
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     dangerouslyAllowSVG: true,
@@ -35,13 +35,14 @@ const nextConfig = {
         pathname: '/storage/v1/object/public/**',
       },
     ],
+    unoptimized: true,
   },
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    optimizeCss: true,
   },
   compress: true,
   poweredByHeader: false,
-  output: 'standalone',
   async headers() {
     return [
       {
@@ -80,14 +81,10 @@ const nextConfig = {
               "upgrade-insecure-requests"
             ].join('; '),
           },
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=2678400, immutable',
-          },
         ],
       },
       {
-        source: '/:path*.png',
+        source: '/:path*.(png|jpg|jpeg|gif|svg|webp|avif)',
         headers: [
           {
             key: 'Cache-Control',
@@ -96,52 +93,7 @@ const nextConfig = {
         ],
       },
       {
-        source: '/:path*.jpg',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/:path*.jpeg',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/:path*.gif',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/:path*.svg',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/:path*.webp',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/:path*.avif',
+        source: '/_next/static/:path*',
         headers: [
           {
             key: 'Cache-Control',

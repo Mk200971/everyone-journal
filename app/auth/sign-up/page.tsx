@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { logger } from "@/lib/logger"
 
 export default function Page() {
   const [email, setEmail] = useState("")
@@ -42,7 +43,7 @@ export default function Page() {
       return
     }
 
-    console.log("[v0] Sign-up - Starting sign-up process")
+    logger.info("Starting sign-up process", { email })
 
     try {
       const formData = new FormData()
@@ -56,10 +57,10 @@ export default function Page() {
 
       await signUp(formData)
 
-      console.log("[v0] Sign-up - Success, redirecting to success page")
+      logger.info("Sign-up successful, redirecting", { email })
       router.push("/auth/sign-up-success")
     } catch (error: unknown) {
-      console.error("[v0] Sign-up - Error:", error)
+      logger.error("Sign-up error", { email, error: error instanceof Error ? error.message : String(error) })
       setError(error instanceof Error ? error.message : "An error occurred")
     } finally {
       setIsLoading(false)

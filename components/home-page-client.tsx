@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { fetchAllCommunityActivity } from "@/lib/actions"
 import { getAvatarColor } from "@/lib/utils"
+import { MissionCardSkeleton, ActivityFeedSkeleton, LeaderboardSkeleton } from "@/components/skeleton-loaders"
 
 interface Mission {
   id: string
@@ -77,7 +78,7 @@ interface HomePageData {
   resources: Resource[]
   recentActivity: RecentActivity[]
   topUsers: LeaderboardEntry[]
-  user: any
+  user: { id: string; email: string } | null
   userProfile: { name: string } | null
 }
 
@@ -93,7 +94,19 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
   const [selectedType, setSelectedType] = useState("All")
   const [selectedResourceType, setSelectedResourceType] = useState("All Resources")
   const [isHydrated, setIsHydrated] = useState(false)
-  const [userSubmissions, setUserSubmissions] = useState<Record<string, any[]>>({})
+  const [userSubmissions, setUserSubmissions] = useState<
+    Record<
+      string,
+      Array<{
+        id: string
+        mission_id: string
+        status: string
+        created_at: string
+      }>
+    >
+  >({})
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false)
+  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false)
 
   const abortControllersRef = useRef<{
     activity?: AbortController
@@ -127,6 +140,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         if (!mounted) return
 
         try {
+          setIsLoadingActivity(true)
           const result = await fetchAllCommunityActivity()
           if (mounted && result.success) {
             setRecentActivity(result.data)
@@ -134,6 +148,10 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         } catch (error) {
           if (mounted) {
             console.error("Error fetching activity:", error)
+          }
+        } finally {
+          if (mounted) {
+            setIsLoadingActivity(false)
           }
         }
       }, 300)
@@ -150,12 +168,13 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         if (!mounted) return
 
         try {
+          setIsLoadingLeaderboard(true)
           const { data: profiles, error } = await supabase
             .from("profiles")
             .select(`
-              id, 
-              name, 
-              avatar_url, 
+              id,
+              name,
+              avatar_url,
               total_points,
               job_title,
               department
@@ -192,6 +211,10 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
           if (mounted) {
             console.error("Error fetching top users:", error)
           }
+        } finally {
+          if (mounted) {
+            setIsLoadingLeaderboard(false)
+          }
         }
       }, 300)
     }
@@ -221,7 +244,15 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                 acc[submission.mission_id].push(submission)
                 return acc
               },
-              {} as Record<string, any[]>,
+              {} as Record<
+                string,
+                Array<{
+                  id: string
+                  mission_id: string
+                  status: string
+                  created_at: string
+                }>
+              >,
             )
             setUserSubmissions(submissionsByMission)
           }
@@ -462,111 +493,128 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8 sm:mb-10">
-        {recentActivity.length > 0 && (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-10">
+        {isLoadingActivity ? (
+          <ActivityFeedSkeleton />
+        ) : (
           <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10">
             <CardHeader className="p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-4">
-                <CardTitle className="text-lg sm:text-xl font-bold text-foreground flex items-center gap-2 min-w-0">
-                  <Users className="h-5 w-5 sm:h-6 sm:w-6 text-primary flex-shrink-0" aria-hidden="true" />
-                  <span className="text-balance">Recent Community Activity</span>
+              <div className="flex items-center justify-between gap-3 sm:gap-4">
+                <CardTitle className="text-base sm:text-lg lg:text-xl font-bold text-foreground flex items-center gap-2 min-w-0">
+                  <Users
+                    className="h-5 w-5 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-primary flex-shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="text-balance leading-tight">Recent Community Activity</span>
                 </CardTitle>
-                <Link href="/activity" aria-label="View all community activity">
+                <Link href="/activity" aria-label="View all community activity" className="touch-manipulation">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-primary hover:text-primary/80 hover:bg-primary/10 h-9 px-3 text-sm flex-shrink-0"
+                    className="text-primary hover:text-primary/80 hover:bg-primary/10 h-11 sm:h-9 px-3 text-xs sm:text-sm flex-shrink-0 touch-manipulation"
                   >
-                    <span className="hidden sm:inline">View all</span>
-                    <span className="sm:hidden">All</span>
+                    <span className="hidden xs:inline sm:inline">View all</span>
+                    <span className="xs:hidden sm:hidden">All</span>
                     <ExternalLink className="h-3 w-3 ml-1" aria-hidden="true" />
                   </Button>
                 </Link>
               </div>
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0">
-              <div className="space-y-3" role="list" aria-label="Recent community activities">
-                {recentActivity.slice(0, 5).map((activity, index) => (
-                  <div
-                    key={activity.id}
-                    role="listitem"
-                    className={`flex items-center gap-3 p-3 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors ${
-                      index >= 3 ? "hidden md:flex" : ""
-                    }`}
-                  >
-                    {activity.user_id ? (
-                      <Link href={`/user/${activity.user_id}`} aria-label={`View ${activity.user_name}'s profile`}>
-                        <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
+              {recentActivity.length > 0 ? (
+                <div className="space-y-2 sm:space-y-3" role="list" aria-label="Recent community activities">
+                  {recentActivity.slice(0, 5).map((activity, index) => (
+                    <div
+                      key={activity.id}
+                      role="listitem"
+                      className={`flex items-center gap-2 sm:gap-3 p-3 sm:p-3 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors touch-manipulation ${
+                        index >= 3 ? "hidden md:flex" : ""
+                      }`}
+                    >
+                      {activity.user_id ? (
+                        <Link href={`/user/${activity.user_id}`} aria-label={`View ${activity.user_name}'s profile`}>
+                          <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
+                            <AvatarImage src={activity.user_avatar_url || undefined} alt={activity.user_name} />
+                            <AvatarFallback className={getAvatarColor(activity.user_id, activity.user_name)}>
+                              {activity.user_name
+                                ?.split(" ")
+                                .map((n) => n[0])
+                                .join("") || "U"}
+                            </AvatarFallback>
+                          </Avatar>
+                        </Link>
+                      ) : (
+                        <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
                           <AvatarImage src={activity.user_avatar_url || undefined} alt={activity.user_name} />
-                          <AvatarFallback className={getAvatarColor(activity.user_id, activity.user_name)}>
+                          <AvatarFallback className={getAvatarColor(undefined, activity.user_name)}>
                             {activity.user_name
                               ?.split(" ")
                               .map((n) => n[0])
                               .join("") || "U"}
                           </AvatarFallback>
                         </Avatar>
-                      </Link>
-                    ) : (
-                      <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
-                        <AvatarImage src={activity.user_avatar_url || undefined} alt={activity.user_name} />
-                        <AvatarFallback className={getAvatarColor(undefined, activity.user_name)}>
-                          {activity.user_name
-                            ?.split(" ")
-                            .map((n) => n[0])
-                            .join("") || "U"}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm sm:text-base text-foreground">
-                        {activity.user_id ? (
-                          <Link
-                            href={`/user/${activity.user_id}`}
-                            className="font-medium hover:text-primary hover:underline transition-colors"
-                          >
-                            {activity.user_name}
-                          </Link>
-                        ) : (
-                          <span className="font-medium">{activity.user_name}</span>
-                        )}
-                        {activity.type === "profile_update" ? (
-                          <>
-                            {" updated their profile"}
-                            {activity.changed_fields && activity.changed_fields.length > 0 && (
-                              <span className="text-muted-foreground"> ({activity.changed_fields.join(", ")})</span>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            {" completed "}
-                            {activity.mission_id ? (
-                              <Link
-                                href={`/mission/${activity.mission_id}`}
-                                className="font-medium text-primary break-words hover:underline transition-colors"
-                              >
-                                '{activity.mission_title}'
-                              </Link>
-                            ) : (
-                              <span className="font-medium text-primary break-words">'{activity.mission_title}'</span>
-                            )}
-                          </>
-                        )}
-                      </p>
-                      <p className="text-xs sm:text-sm text-muted-foreground">
-                        {formatRelativeTime(activity.created_at)}
-                        {activity.type !== "profile_update" && activity.points_awarded > 0 && (
-                          <> • +{activity.points_awarded} EP</>
-                        )}
-                      </p>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm sm:text-base text-foreground">
+                          {activity.user_id ? (
+                            <Link
+                              href={`/user/${activity.user_id}`}
+                              className="font-medium hover:text-primary hover:underline transition-colors"
+                            >
+                              {activity.user_name}
+                            </Link>
+                          ) : (
+                            <span className="font-medium">{activity.user_name}</span>
+                          )}
+                          {activity.type === "profile_update" ? (
+                            <>
+                              {" updated their profile"}
+                              {activity.changed_fields && activity.changed_fields.length > 0 && (
+                                <span className="text-muted-foreground"> ({activity.changed_fields.join(", ")})</span>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {" completed "}
+                              {activity.mission_id ? (
+                                <Link
+                                  href={`/mission/${activity.mission_id}`}
+                                  className="font-medium text-primary break-words hover:underline transition-colors"
+                                >
+                                  '{activity.mission_title}'
+                                </Link>
+                              ) : (
+                                <span className="font-medium text-primary break-words">'{activity.mission_title}'</span>
+                              )}
+                            </>
+                          )}
+                        </p>
+                        <p className="text-xs sm:text-sm text-muted-foreground">
+                          {formatRelativeTime(activity.created_at)}
+                          {activity.type !== "profile_update" && activity.points_awarded > 0 && (
+                            <> • +{activity.points_awarded} EP</>
+                          )}
+                        </p>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 px-4">
+                  <div className="w-12 h-12 bg-muted/20 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-6">
+                    <Users className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
                   </div>
-                ))}
-              </div>
+                  <p className="text-muted-foreground text-sm">No recent activity yet.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Complete missions to see activity here!</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
 
-        {topUsers.length > 0 && (
+        {isLoadingLeaderboard ? (
+          <LeaderboardSkeleton />
+        ) : (
           <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10">
             <CardHeader className="p-4 sm:p-6">
               <div className="flex items-center justify-between gap-4">
@@ -588,119 +636,129 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
               </div>
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0">
-              <div className="space-y-3" role="list" aria-label="Top users leaderboard">
-                {topUsers.map((user, index) => {
-                  const getMedalEmoji = (rank: number) => {
-                    switch (rank) {
-                      case 1:
-                        return "🥇"
-                      case 2:
-                        return "🥈"
-                      case 3:
-                        return "🥉"
-                      default:
-                        return null
+              {topUsers.length > 0 ? (
+                <div className="space-y-3" role="list" aria-label="Top users leaderboard">
+                  {topUsers.map((user, index) => {
+                    const getMedalEmoji = (rank: number) => {
+                      switch (rank) {
+                        case 1:
+                          return "🥇"
+                        case 2:
+                          return "🥈"
+                        case 3:
+                          return "🥉"
+                        default:
+                          return null
+                      }
                     }
-                  }
 
-                  const getRankText = (rank: number) => {
-                    switch (rank) {
-                      case 1:
-                        return "1st"
-                      case 2:
-                        return "2nd"
-                      case 3:
-                        return "3rd"
-                      default:
-                        return `${rank}th`
+                    const getRankText = (rank: number) => {
+                      switch (rank) {
+                        case 1:
+                          return "1st"
+                        case 2:
+                          return "2nd"
+                        case 3:
+                          return "3rd"
+                        default:
+                          return `${rank}th`
+                      }
                     }
-                  }
 
-                  const medal = getMedalEmoji(user.rank)
+                    const medal = getMedalEmoji(user.rank)
 
-                  return (
-                    <div
-                      key={user.id}
-                      role="listitem"
-                      className="flex items-center sm:items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors"
-                    >
-                      <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                        <Link href={`/user/${user.id}`} aria-label={`View ${user.name}'s profile`}>
-                          <Avatar className="w-12 h-12 sm:w-14 sm:h-14 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
-                            <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
-                            <AvatarFallback className={getAvatarColor(user.id, user.name)}>
-                              {user.name
-                                ?.split(" ")
-                                .map((n) => n[0])
-                                .join("") || "U"}
-                            </AvatarFallback>
-                          </Avatar>
-                        </Link>
-
-                        <div
-                          className="flex items-center justify-center"
-                          aria-label={`Rank: ${getRankText(user.rank)}`}
-                        >
-                          {medal ? (
-                            <div
-                              className="text-3xl sm:text-4xl"
-                              role="img"
-                              aria-label={`${getRankText(user.rank)} place medal`}
-                            >
-                              {medal}
-                            </div>
-                          ) : (
-                            <div className="bg-primary text-primary-foreground rounded-full w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center font-bold text-sm sm:text-base shadow-lg">
-                              {getRankText(user.rank)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                          <Link
-                            href={`/user/${user.id}`}
-                            className="font-semibold text-foreground hover:text-primary hover:underline transition-colors text-sm sm:text-base text-balance leading-tight"
-                          >
-                            {user.name}
+                    return (
+                      <div
+                        key={user.id}
+                        role="listitem"
+                        className="flex items-center sm:items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white/5 dark:bg-black/10 rounded-lg border border-white/10 dark:border-white/5 hover:bg-white/10 dark:hover:bg-black/20 transition-colors"
+                      >
+                        <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                          <Link href={`/user/${user.id}`} aria-label={`View ${user.name}'s profile`}>
+                            <Avatar className="w-12 h-12 sm:w-14 sm:h-14 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all">
+                              <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
+                              <AvatarFallback className={getAvatarColor(user.id, user.name)}>
+                                {user.name
+                                  ?.split(" ")
+                                  .map((n) => n[0])
+                                  .join("") || "U"}
+                              </AvatarFallback>
+                            </Avatar>
                           </Link>
-                          <div className="bg-primary text-primary-foreground px-2.5 py-1 rounded-full text-xs font-bold flex-shrink-0 whitespace-nowrap leading-none">
-                            {user.total_points} EP
+
+                          <div
+                            className="flex items-center justify-center"
+                            aria-label={`Rank: ${getRankText(user.rank)}`}
+                          >
+                            {medal ? (
+                              <div
+                                className="text-3xl sm:text-4xl"
+                                role="img"
+                                aria-label={`${getRankText(user.rank)} place medal`}
+                              >
+                                {medal}
+                              </div>
+                            ) : (
+                              <div className="bg-primary text-primary-foreground rounded-full w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center font-bold text-sm sm:text-base shadow-lg">
+                                {getRankText(user.rank)}
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        <div className="space-y-0.5">
-                          {user.job_title && (
-                            <p className="text-xs sm:text-sm text-muted-foreground text-pretty leading-snug">
-                              <span className="inline-flex items-center gap-1.5">
-                                <Briefcase className="h-3 w-3 text-primary/70 flex-shrink-0" aria-hidden="true" />
-                                <span className="break-words">{user.job_title}</span>
-                              </span>
-                            </p>
-                          )}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <Link
+                              href={`/user/${user.id}`}
+                              className="font-semibold text-foreground hover:text-primary hover:underline transition-colors text-sm sm:text-base text-balance leading-tight"
+                            >
+                              {user.name}
+                            </Link>
+                            <div className="bg-primary text-primary-foreground px-2.5 py-1 rounded-full text-xs font-bold flex-shrink-0 whitespace-nowrap leading-none">
+                              {user.total_points} EP
+                            </div>
+                          </div>
 
-                          {user.department && (
+                          <div className="space-y-0.5">
+                            {user.job_title && (
+                              <p className="text-xs sm:text-sm text-muted-foreground text-pretty leading-snug">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Briefcase className="h-3 w-3 text-primary/70 flex-shrink-0" aria-hidden="true" />
+                                  <span className="break-words">{user.job_title}</span>
+                                </span>
+                              </p>
+                            )}
+
+                            {user.department && (
+                              <p className="text-xs text-muted-foreground">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Users className="h-3 w-3 text-primary/70 flex-shrink-0" aria-hidden="true" />
+                                  <span className="break-words">{user.department}</span>
+                                </span>
+                              </p>
+                            )}
+
                             <p className="text-xs text-muted-foreground">
                               <span className="inline-flex items-center gap-1.5">
-                                <Users className="h-3 w-3 text-primary/70 flex-shrink-0" aria-hidden="true" />
-                                <span className="break-words">{user.department}</span>
+                                <CheckCircle className="h-3 w-3 text-primary/70 flex-shrink-0" aria-hidden="true" />
+                                <span className="whitespace-nowrap">{user.activityCount} Activities completed</span>
                               </span>
                             </p>
-                          )}
-
-                          <p className="text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1.5">
-                              <CheckCircle className="h-3 w-3 text-primary/70 flex-shrink-0" aria-hidden="true" />
-                              <span className="whitespace-nowrap">{user.activityCount} Activities completed</span>
-                            </span>
-                          </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8 px-4">
+                  <div className="w-12 h-12 bg-muted/20 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-6">
+                    <Trophy className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+                  </div>
+                  <p className="text-muted-foreground text-sm">No leaderboard data yet.</p>
+                  <p className="text-muted-foreground text-xs mt-1">Be the first to earn points!</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -721,20 +779,32 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
         role="list"
         aria-label="Available missions"
       >
-        {missionsWithSubmissions.map((mission, index) => (
+        {missionsWithSubmissions.length === 0 && isHydrated ? (
           <div
-            key={mission.id}
-            role="listitem"
-            className="animate-in fade-in slide-in-from-bottom-4"
-            style={{ animationDelay: `${index * 100}ms` }}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8 mb-8 sm:mb-12"
+            role="list"
+            aria-label="Loading missions"
           >
-            <MissionCard mission={mission} />
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <MissionCardSkeleton key={i} />
+            ))}
           </div>
-        ))}
+        ) : (
+          missionsWithSubmissions.map((mission, index) => (
+            <div
+              key={mission.id}
+              role="listitem"
+              className="animate-in fade-in slide-in-from-bottom-4"
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              <MissionCard mission={mission} priority={index < 6} />
+            </div>
+          ))
+        )}
       </div>
 
       {resources.length > 0 && (
-        <section className="mb-8 sm:mb-10" aria-labelledby="resources-heading">
+        <section className="mb-6 sm:mb-10" aria-labelledby="resources-heading">
           <div className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-xl p-6 sm:p-8 mb-6 sm:mb-8">
             <div className="flex items-center justify-between gap-4 mb-3 sm:mb-4">
               <h2
@@ -758,7 +828,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
             </div>
           </div>
 
-          <div className="mb-6 sm:mb-8" role="group" aria-label="Filter resources by type">
+          <div className="mb-4 sm:mb-6 sm:mb-8" role="group" aria-label="Filter resources by type">
             <div className="flex flex-wrap gap-2 sm:gap-3">
               {["All Resources", "Books", "Videos", "Articles", "Podcasts"].map((type) => (
                 <Button
@@ -773,7 +843,7 @@ export function HomePageClient({ initialData }: HomePageClientProps) {
                         ? "bg-primary text-primary-foreground"
                         : "bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-white/20 dark:hover:bg-black/30"
                     }
-                    hover:scale-105 transition-all duration-300 active:scale-95 font-medium h-10 sm:h-11 px-4 sm:px-5 text-sm min-w-[80px] sm:min-w-[90px]
+                    hover:scale-105 transition-all duration-300 active:scale-95 font-medium h-11 sm:h-10 px-4 sm:px-5 text-sm min-w-[90px] sm:min-w-[100px] touch-manipulation
                   `}
                 >
                   {type}

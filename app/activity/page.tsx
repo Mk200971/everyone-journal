@@ -32,8 +32,25 @@ interface ActivityItem {
   likes_count?: number
   user_has_liked?: boolean
   likes_users?: Array<{ user_id: string; user_name: string; user_avatar?: string }>
-  answers?: any
-  submission_schema?: any
+  answers?: Record<string, unknown>
+  submission_schema?: {
+    questions?: Array<{
+      field_name?: string
+      name?: string
+      label?: string
+      helperText?: string
+      helper_text?: string
+      description?: string
+    }>
+    fields?: Array<{
+      field_name?: string
+      name?: string
+      label?: string
+      helperText?: string
+      helper_text?: string
+      description?: string
+    }>
+  }
   profile_changes?: string[]
 }
 
@@ -144,89 +161,115 @@ async function getRecentActivity(page: number): Promise<ActivityItem[]> {
 
   const activities: ActivityItem[] = []
 
-  submissions.forEach((submission: any) => {
-    const profile = profilesMap.get(submission.user_id)
-    const mission = missionsMap.get(submission.mission_id)
+  submissions.forEach(
+    (submission: {
+      id: string
+      user_id: string
+      mission_id: string
+      status: string
+      points_awarded: number
+      created_at: string
+      text_submission: string | null
+      media_url: string | null
+      answers: Record<string, unknown> | null
+    }) => {
+      const profile = profilesMap.get(submission.user_id)
+      const mission = missionsMap.get(submission.mission_id)
 
-    if (!profile || !mission) return
+      if (!profile || !mission) return
 
-    if (submission.status === "approved") {
-      activities.push({
-        id: `completed-${submission.id}`,
-        type: "mission_completed",
-        user_name: profile.name || "Anonymous",
-        user_avatar: profile.avatar_url,
-        user_id: submission.user_id,
-        mission_title: mission.title,
-        mission_type: mission.type,
-        mission_number: mission.mission_number,
-        mission_points_value: mission.points_value,
-        points: submission.points_awarded,
-        created_at: submission.created_at,
-        mission_id: mission.id,
-        submission_id: submission.id,
-        text_submission: submission.text_submission,
-        media_url: submission.media_url,
-        likes_count: likesCount[submission.id] || 0,
-        user_has_liked: userLikes.has(submission.id),
-        likes_users: likesUsers[submission.id] || [],
-        answers: submission.answers,
-        submission_schema: mission.submission_schema,
-      })
-    } else {
-      activities.push({
-        id: `submitted-${submission.id}`,
-        type: "mission_submitted",
-        user_name: profile.name || "Anonymous",
-        user_avatar: profile.avatar_url,
-        user_id: submission.user_id,
-        mission_title: mission.title,
-        mission_type: mission.type,
-        mission_number: mission.mission_number,
-        mission_points_value: mission.points_value,
-        created_at: submission.created_at,
-        mission_id: mission.id,
-        submission_id: submission.id,
-        text_submission: submission.text_submission,
-        media_url: submission.media_url,
-        likes_count: likesCount[submission.id] || 0,
-        user_has_liked: userLikes.has(submission.id),
-        likes_users: likesUsers[submission.id] || [],
-        answers: submission.answers,
-        submission_schema: mission.submission_schema,
-      })
-    }
-  })
-
-  if (profileActivities && profileActivities.length > 0) {
-    profileActivities.forEach((activity: any) => {
-      const profile = profilesMap.get(activity.user_id)
-
-      if (profile) {
+      if (submission.status === "approved") {
         activities.push({
-          id: `profile-${activity.id}`,
-          type: "profile_updated",
+          id: `completed-${submission.id}`,
+          type: "mission_completed",
           user_name: profile.name || "Anonymous",
           user_avatar: profile.avatar_url,
-          user_id: activity.user_id,
-          created_at: activity.created_at,
-          profile_changes: activity.changed_fields,
+          user_id: submission.user_id,
+          mission_title: mission.title,
+          mission_type: mission.type,
+          mission_number: mission.mission_number,
+          mission_points_value: mission.points_value,
+          points: submission.points_awarded,
+          created_at: submission.created_at,
+          mission_id: mission.id,
+          submission_id: submission.id,
+          text_submission: submission.text_submission,
+          media_url: submission.media_url,
+          likes_count: likesCount[submission.id] || 0,
+          user_has_liked: userLikes.has(submission.id),
+          likes_users: likesUsers[submission.id] || [],
+          answers: submission.answers,
+          submission_schema: mission.submission_schema,
+        })
+      } else {
+        activities.push({
+          id: `submitted-${submission.id}`,
+          type: "mission_submitted",
+          user_name: profile.name || "Anonymous",
+          user_avatar: profile.avatar_url,
+          user_id: submission.user_id,
+          mission_title: mission.title,
+          mission_type: mission.type,
+          mission_number: mission.mission_number,
+          mission_points_value: mission.points_value,
+          created_at: submission.created_at,
+          mission_id: mission.id,
+          submission_id: submission.id,
+          text_submission: submission.text_submission,
+          media_url: submission.media_url,
+          likes_count: likesCount[submission.id] || 0,
+          user_has_liked: userLikes.has(submission.id),
+          likes_users: likesUsers[submission.id] || [],
+          answers: submission.answers,
+          submission_schema: mission.submission_schema,
         })
       }
-    })
+    },
+  )
+
+  if (profileActivities && profileActivities.length > 0) {
+    profileActivities.forEach(
+      (activity: {
+        id: string
+        user_id: string
+        created_at: string
+        changed_fields: string[]
+      }) => {
+        const profile = profilesMap.get(activity.user_id)
+
+        if (profile) {
+          activities.push({
+            id: `profile-${activity.id}`,
+            type: "profile_updated",
+            user_name: profile.name || "Anonymous",
+            user_avatar: profile.avatar_url,
+            user_id: activity.user_id,
+            created_at: activity.created_at,
+            profile_changes: activity.changed_fields,
+          })
+        }
+      },
+    )
   }
 
   if (newUsers) {
-    newUsers.forEach((user: any) => {
-      activities.push({
-        id: `joined-${user.id}`,
-        type: "user_joined",
-        user_name: user.name || "New Member",
-        user_avatar: user.avatar_url,
-        user_id: user.id,
-        created_at: user.created_at,
-      })
-    })
+    newUsers.forEach(
+      (user: {
+        id: string
+        name: string
+        avatar_url: string | null
+        created_at: string
+      }) => {
+        activities.push({
+          id: `joined-${user.id}`,
+          type: "user_joined",
+          user_name: user.name || "New Member",
+          user_avatar: user.avatar_url,
+          user_id: user.id,
+          created_at: user.created_at,
+        })
+      },
+    )
   }
 
   const finalActivities = activities
@@ -334,7 +377,10 @@ async function toggleLike(submissionId: string, userHasLiked: boolean) {
   }
 }
 
-function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissionSchema: any }) {
+function AnswersDisplay({
+  answers,
+  submissionSchema,
+}: { answers: Record<string, unknown>; submissionSchema: ActivityItem["submission_schema"] }) {
   if (!answers || typeof answers !== "object" || Object.keys(answers).length === 0) {
     return null
   }
@@ -384,7 +430,7 @@ function AnswersDisplay({ answers, submissionSchema }: { answers: any; submissio
 
   return (
     <div className="space-y-3">
-      {schemaQuestions.map((question: any, index: number) => {
+      {schemaQuestions.map((question, index: number) => {
         const fieldName = question.field_name || question.name || question.label
         const answer = answers[fieldName]
 
@@ -719,30 +765,28 @@ function ActivityStats({
   }
 }) {
   return (
-    <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-8 sm:mb-12">
-      <Card>
-        <CardContent className="p-3 sm:p-4 text-center">
-          <Trophy className="h-6 w-6 sm:h-8 sm:w-8 text-accent mx-auto mb-1 sm:mb-2" />
-          <div className="text-lg sm:text-2xl font-bold">{communityStats.totalCompletedActivities}</div>
-          <div className="text-xs sm:text-sm text-muted-foreground leading-tight">
-            Activities completed by community
-          </div>
+    <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-8 sm:mb-12">
+      <Card className="hover:scale-105 transition-transform touch-manipulation">
+        <CardContent className="p-4 sm:p-6 text-center">
+          <Trophy className="h-8 w-8 sm:h-10 sm:w-10 text-accent mx-auto mb-2 sm:mb-3" />
+          <div className="text-xl sm:text-2xl lg:text-3xl font-bold">{communityStats.totalCompletedActivities}</div>
+          <div className="text-xs sm:text-sm text-muted-foreground leading-tight mt-1">Activities completed</div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-3 sm:p-4 text-center">
-          <Users className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-accent" />
-          <div className="text-lg sm:text-2xl font-bold">{communityStats.totalCommunityMembers}</div>
-          <div className="text-xs sm:text-sm text-muted-foreground leading-tight">Community members</div>
+      <Card className="hover:scale-105 transition-transform touch-manipulation">
+        <CardContent className="p-4 sm:p-6 text-center">
+          <Users className="h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-2 sm:mb-3 text-accent" />
+          <div className="text-xl sm:text-2xl lg:text-3xl font-bold">{communityStats.totalCommunityMembers}</div>
+          <div className="text-xs sm:text-sm text-muted-foreground leading-tight mt-1">Community members</div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-3 sm:p-4 text-center">
-          <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-accent mx-auto mb-1 sm:mb-2" />
-          <div className="text-lg sm:text-2xl font-bold">{communityStats.totalCommunityPoints}</div>
-          <div className="text-xs sm:text-sm text-muted-foreground leading-tight">Combined EP earned by community</div>
+      <Card className="hover:scale-105 transition-transform touch-manipulation">
+        <CardContent className="p-4 sm:p-6 text-center">
+          <TrendingUp className="h-8 w-8 sm:h-10 sm:w-10 text-accent mx-auto mb-2 sm:mb-3" />
+          <div className="text-xl sm:text-2xl lg:text-3xl font-bold">{communityStats.totalCommunityPoints}</div>
+          <div className="text-xs sm:text-sm text-muted-foreground leading-tight mt-1">Combined EP earned</div>
         </CardContent>
       </Card>
     </div>

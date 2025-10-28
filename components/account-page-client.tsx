@@ -18,12 +18,30 @@ import { getAvatarColor } from "@/lib/utils"
 
 interface AccountPageClientProps {
   initialData: {
-    user: any
-    profile: any
+    user: { id: string; email: string }
+    profile: {
+      id: string
+      name: string
+      email: string
+      avatar_url: string | null
+      job_title: string | null
+      department: string | null
+      country: string | null
+      bio: string | null
+      customer_obsession: string | null
+    }
     totalPoints: number
     missionsCompleted: number
     userRank: number
-    submissionHistoryWithTitles: any[]
+    submissionHistoryWithTitles: Array<{
+      id: string
+      mission_id: string
+      status: string
+      points_awarded: number
+      created_at: string
+      missions: { title: string }
+      content: string | null
+    }>
   }
 }
 
@@ -32,10 +50,12 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState(initialData.profile)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
-  const [selectedSubmission, setSelectedSubmission] = useState<any>(null)
-  const [showSubmissionModal, setShowSubmissionModal] = useState(false)
+  const [selectedSubmission, setSelectedSubmission] = useState<
+    (typeof initialData.submissionHistoryWithTitles)[0] | null
+  >(null)
   const [isProfilePending, startProfileTransition] = useTransition()
   const [isAvatarPending, startAvatarTransition] = useTransition()
+  const [showSubmissionModal, setShowSubmissionModal] = useState(false)
 
   const handleProfileUpdate = async (formData: FormData) => {
     startProfileTransition(async () => {
@@ -85,7 +105,7 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
     })
   }
 
-  const handleSubmissionClick = (submission: any) => {
+  const handleSubmissionClick = (submission: (typeof initialData.submissionHistoryWithTitles)[0]) => {
     setSelectedSubmission(submission)
     setShowSubmissionModal(true)
   }
@@ -369,7 +389,7 @@ export function AccountPageClient({ initialData }: AccountPageClientProps) {
                       </span>
                     ) : (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 whitespace-nowrap">
-                        {submission.status === "pending" ? "Pending" : submission.status}
+                        {submission.status === "pending" ? "Pending Review" : submission.status}
                       </span>
                     )}
                   </div>
