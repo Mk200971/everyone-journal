@@ -51,15 +51,23 @@ export function OptimizedImage({
 
   if (hasError) {
     return (
-      <div className={`bg-gray-200 dark:bg-gray-800 flex items-center justify-center ${className}`}>
-        <span className="text-gray-500 text-sm">Image unavailable</span>
+      <div
+        className={`bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 flex items-center justify-center ${className}`}
+      >
+        <Image
+          src="/everyone-logo.svg"
+          alt="Everyone Journal Logo"
+          width={width ? width / 2 : 100}
+          height={height ? height / 2 : 100}
+          className="opacity-50"
+        />
       </div>
     )
   }
 
   return (
     <Image
-      src={src || "/placeholder.svg"}
+      src={src || "/everyone-logo.svg"}
       alt={alt}
       width={width}
       height={height}

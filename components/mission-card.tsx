@@ -216,14 +216,17 @@ export function MissionCard({ mission, priority = false }: MissionCardProps) {
               width={400}
               height={400}
               className="w-full h-full object-cover"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
-              loading={priority ? "eager" : "lazy"} // Use eager loading for priority images
-              priority={priority} // Added priority prop for LCP optimization
-              quality={70}
-              placeholder="empty"
+              sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 400px"
+              loading={priority ? "eager" : "lazy"}
+              priority={priority}
+              quality={priority ? 85 : 75}
+              placeholder="blur"
+              blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2YzZjRmNiIvPjwvc3ZnPg=="
               onError={(e) => {
                 const target = e.target as HTMLImageElement
-                target.src = "/mission-placeholder.jpg"
+                target.src = "/everyone-logo.svg"
+                target.style.objectFit = "contain"
+                target.style.padding = "2rem"
               }}
             />
           </div>
@@ -235,11 +238,12 @@ export function MissionCard({ mission, priority = false }: MissionCardProps) {
               width={400}
               height={400}
               className="w-full h-full object-cover"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
-              loading={priority ? "eager" : "lazy"} // Use eager loading for priority images
-              priority={priority} // Added priority prop for fallback images too
-              quality={70}
-              placeholder="empty"
+              sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 400px"
+              loading={priority ? "eager" : "lazy"}
+              priority={priority}
+              quality={75}
+              placeholder="blur"
+              blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2YzZjRmNiIvPjwvc3ZnPg=="
             />
           </div>
         )}

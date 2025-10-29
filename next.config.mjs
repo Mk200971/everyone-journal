@@ -10,7 +10,7 @@ const nextConfig = {
     domains: ['hebbkx1anhila5yf.public.blob.vercel-storage.com', 'blob.vercel-storage.com', 'cicquptmhxepsdibvoag.supabase.co'],
     formats: ['image/avif', 'image/webp'],
     minimumCacheTTL: 31536000,
-    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
@@ -35,7 +35,7 @@ const nextConfig = {
         pathname: '/storage/v1/object/public/**',
       },
     ],
-    unoptimized: true,
+    unoptimized: false,
   },
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],

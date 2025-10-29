@@ -763,9 +763,16 @@ export function MissionClient({
                     height={448}
                     className="w-full h-full object-cover"
                     sizes="(max-width: 768px) 100vw, 448px"
-                    quality={80}
-                    placeholder="empty"
-                    loading="lazy"
+                    quality={85}
+                    priority
+                    placeholder="blur"
+                    blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDQ4IiBoZWlnaHQ9IjQ0OCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDQ4IiBoZWlnaHQ9IjQ0OCIgZmlsbD0iI2YzZjRmNiIvPjwvc3ZnPg=="
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      target.src = "/everyone-logo.svg"
+                      target.style.objectFit = "contain"
+                      target.style.padding = "3rem"
+                    }}
                   />
                 </div>
               </div>

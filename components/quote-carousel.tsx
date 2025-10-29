@@ -44,6 +44,7 @@ export function QuoteCarousel({ initialQuotes = [] }: QuoteCarouselProps) {
   const [quotes, setQuotes] = useState<NoticeboardItem[]>(initialQuotes)
   const [loading, setLoading] = useState(initialQuotes.length === 0)
   const [error, setError] = useState<string | null>(null)
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (initialQuotes.length > 0) {
@@ -95,6 +96,10 @@ export function QuoteCarousel({ initialQuotes = [] }: QuoteCarouselProps) {
     setCurrentIndex((prevIndex) => (prevIndex + 1) % quotes.length)
   }, [quotes.length])
 
+  const handleImageError = useCallback((quoteId: string) => {
+    setFailedImages((prev) => new Set(prev).add(quoteId))
+  }, [])
+
   if (error) {
     return (
       <Card className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 mb-6 sm:mb-8">
@@ -139,23 +144,34 @@ export function QuoteCarousel({ initialQuotes = [] }: QuoteCarouselProps) {
                     <div className="max-w-5xl mx-auto">
                       <div className="relative w-full" style={{ transform: "translateZ(0)" }}>
                         <div className="aspect-[3/2] rounded-lg overflow-hidden shadow-lg">
-                          <Image
-                            src={
-                              quote.image_url || "/placeholder.svg?height=400&width=600&query=inspirational quote image"
-                            }
-                            alt={`Quote by ${quote.author}`}
-                            width={1200}
-                            height={800}
-                            className="object-cover w-full h-full"
-                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1200px"
-                            priority={index === 0}
-                            loading={index === 0 ? "eager" : "lazy"}
-                            quality={85}
-                            placeholder="blur"
-                            blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
-                            fetchPriority={index === 0 ? "high" : "auto"}
-                            unoptimized={false}
-                          />
+                          {failedImages.has(quote.id) ? (
+                            <div className="w-full h-full bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-900 flex items-center justify-center">
+                              <Image
+                                src="/everyone-logo.svg"
+                                alt="Everyone Journal Logo"
+                                width={300}
+                                height={300}
+                                className="opacity-40"
+                              />
+                            </div>
+                          ) : (
+                            <Image
+                              src={quote.image_url || "/everyone-logo.svg"}
+                              alt={`Quote by ${quote.author}`}
+                              width={1200}
+                              height={800}
+                              className="object-cover w-full h-full"
+                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, 1200px"
+                              priority={index === 0 || index === 1}
+                              loading={index === 0 || index === 1 ? "eager" : "lazy"}
+                              quality={index === 0 ? 90 : 75}
+                              placeholder="blur"
+                              blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
+                              fetchPriority={index === 0 ? "high" : "auto"}
+                              unoptimized={false}
+                              onError={() => handleImageError(quote.id)}
+                            />
+                          )}
                         </div>
                       </div>
                     </div>
