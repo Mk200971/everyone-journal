@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { Plus, Trash2, Eye, EyeOff, Settings, Move } from "lucide-react"
+import { Plus, Trash2, Eye, EyeOff, EyeIcon, Move } from "lucide-react"
 import { DynamicFormRenderer } from "./dynamic-form-renderer"
 
 interface FormField {
@@ -32,7 +32,7 @@ interface SchemaBuilderProps {
   className?: string
 }
 
-export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }: SchemaBuilderProps) {
+function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }: SchemaBuilderProps) {
   const [schema, setSchema] = useState<FormSchema>(
     initialSchema || {
       version: 1,
@@ -40,7 +40,7 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
     },
   )
   const [showPreview, setShowPreview] = useState(false)
-  const [editingField, setEditingField] = useState<number | null>(null)
+  const [editingFields, setEditingFields] = useState<number[]>([])
 
   const fieldTypes = [
     { value: "textarea", label: "Text Area", description: "Multi-line text input" },
@@ -49,6 +49,8 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
     { value: "select", label: "Dropdown", description: "Select from options" },
     { value: "group", label: "Repeating Group", description: "Group of fields that can repeat" },
   ]
+
+  const availableFieldTypes = fieldTypes.filter((type) => type.value !== "group" && type.value !== "input")
 
   const addField = (type: FormField["type"]) => {
     const newField: FormField = {
@@ -81,7 +83,7 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
     }
     setSchema(updatedSchema)
     onSchemaChange(updatedSchema)
-    setEditingField(schema.fields.length)
+    setEditingFields([...editingFields, schema.fields.length])
   }
 
   const updateField = (index: number, updates: Partial<FormField>) => {
@@ -98,7 +100,7 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
     const updatedSchema = { ...schema, fields: updatedFields }
     setSchema(updatedSchema)
     onSchemaChange(updatedSchema)
-    setEditingField(null)
+    setEditingFields(editingFields.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i)))
   }
 
   const moveField = (index: number, direction: "up" | "down") => {
@@ -134,6 +136,11 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
 
     const updatedOptions = [...field.options]
     updatedOptions[optionIndex] = { ...updatedOptions[optionIndex], ...updates }
+
+    if (updates.label && !updates.value) {
+      updatedOptions[optionIndex].value = updates.label.toLowerCase().replace(/\s+/g, "_")
+    }
+
     updateField(fieldIndex, { options: updatedOptions })
   }
 
@@ -149,11 +156,19 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
     const emptySchema = { version: 1, fields: [] }
     setSchema(emptySchema)
     onSchemaChange(null)
-    setEditingField(null)
+    setEditingFields([])
+  }
+
+  const toggleFieldExpansion = (index: number) => {
+    if (editingFields.includes(index)) {
+      setEditingFields(editingFields.filter((i) => i !== index))
+    } else {
+      setEditingFields([...editingFields, index])
+    }
   }
 
   const renderFieldEditor = (field: FormField, index: number) => {
-    const isEditing = editingField === index
+    const isEditing = editingFields.includes(index)
 
     return (
       <Card
@@ -192,10 +207,10 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setEditingField(isEditing ? null : index)}
+                onClick={() => toggleFieldExpansion(index)}
                 className="h-8 w-8 p-0"
               >
-                <Settings className="h-3 w-3" />
+                <EyeIcon className="h-3 w-3" />
               </Button>
               <Button
                 type="button"
@@ -212,8 +227,8 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
 
         {isEditing && (
           <CardContent className="pt-0 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
+            <div className="space-y-4">
+              <div style={{ display: "none" }}>
                 <Label className="text-foreground text-sm">Field Name</Label>
                 <Input
                   value={field.name}
@@ -297,13 +312,7 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
                         placeholder="Label"
                         value={option.label}
                         onChange={(e) => updateOption(index, optionIndex, { label: e.target.value })}
-                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10"
-                      />
-                      <Input
-                        placeholder="Value"
-                        value={option.value}
-                        onChange={(e) => updateOption(index, optionIndex, { value: e.target.value })}
-                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10"
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 flex-1"
                       />
                       <Button
                         type="button"
@@ -408,17 +417,17 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
 
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          {fieldTypes.map((type) => (
+          {availableFieldTypes.map((type) => (
             <Button
               key={type.value}
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => addField(type.value as FormField["type"])}
-              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10"
+              onClick={() => addField(type.value)}
+              className="text-xs"
             >
-              <Plus className="h-3 w-3 mr-2" />
-              Add {type.label}
+              <Plus className="mr-1 h-3 w-3" />
+              {type.label}
             </Button>
           ))}
         </div>
@@ -442,3 +451,5 @@ export function SchemaBuilder({ initialSchema, onSchemaChange, className = "" }:
     </div>
   )
 }
+
+export { SchemaBuilder }

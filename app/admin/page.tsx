@@ -97,8 +97,10 @@ export default function AdminPage() {
   const [createMissionSchema, setCreateMissionSchema] = useState<any>(null)
   const [editMissionSchema, setEditMissionSchema] = useState<any>(null)
   const [draggedMission, setDraggedMission] = useState<Mission | null>(null)
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null) // Added state for dragged index
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null) // Added dragOverIndex state
+  const [selectedMissionType, setSelectedMissionType] = useState<string>("")
+  const [autoMissionNumber, setAutoMissionNumber] = useState<number>(1)
 
   const [isCreatingMission, startCreateTransition] = useTransition()
   const [isUpdatingMission, startUpdateTransition] = useTransition()
@@ -159,9 +161,34 @@ export default function AdminPage() {
     }
   }
 
+  const calculateNextMissionNumber = (type: string) => {
+    if (!type || missions.length === 0) {
+      return 1
+    }
+
+    // Filter missions by type and get the highest mission_number
+    const missionsOfType = missions.filter((m) => m.type === type)
+    if (missionsOfType.length === 0) {
+      return 1
+    }
+
+    const maxNumber = Math.max(...missionsOfType.map((m) => m.mission_number || 0))
+    return maxNumber + 1
+  }
+
+  useEffect(() => {
+    if (selectedMissionType) {
+      const nextNumber = calculateNextMissionNumber(selectedMissionType)
+      setAutoMissionNumber(nextNumber)
+    }
+  }, [selectedMissionType, missions])
+
   const handleCreateMission = async (formData: FormData) => {
     startCreateTransition(async () => {
       try {
+        console.log("[v0] Starting mission creation")
+        console.log("[v0] FormData entries:", Array.from(formData.entries()))
+
         // Clean up resource_id and quote_id - convert "none" to null
         const resourceId = formData.get("resource_id") as string
         const quoteId = formData.get("quote_id") as string
@@ -188,7 +215,9 @@ export default function AdminPage() {
           formData.set("submission_schema", JSON.stringify(createMissionSchema))
         }
 
+        console.log("[v0] Calling createMission action")
         const result = await createMission(formData)
+        console.log("[v0] createMission result:", result)
 
         if (!result.success) {
           toast({
@@ -207,6 +236,7 @@ export default function AdminPage() {
           description: "The mission has been created successfully.",
         })
       } catch (error) {
+        console.log("[v0] Error in handleCreateMission:", error)
         toast({
           title: "Creation Failed",
           description: `Failed to create mission: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -543,7 +573,7 @@ export default function AdminPage() {
     target.style.opacity = "1"
     setDraggedMission(null)
     setDraggedIndex(null) // Clear the dragged index
-    setDragOverIndex(null)
+    setDragOverIndex(null) // Reset dragOverIndex on drag end
   }
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -760,7 +790,7 @@ export default function AdminPage() {
                       <span className="hidden sm:inline">Add New Activity</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle className="text-foreground">Add New Mission</DialogTitle>
                     </DialogHeader>
@@ -862,21 +892,10 @@ export default function AdminPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="due_date" className="text-foreground">
-                          Due Date (Optional)
-                        </Label>
-                        <Input
-                          id="due_date"
-                          name="due_date"
-                          type="date"
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                      </div>
-                      <div>
                         <Label htmlFor="type" className="text-foreground">
                           Mission Type
                         </Label>
-                        <Select name="type" required>
+                        <Select name="type" required onValueChange={(value) => setSelectedMissionType(value)}>
                           <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
                             <SelectValue placeholder="Select mission type" />
                           </SelectTrigger>
@@ -923,65 +942,6 @@ export default function AdminPage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
-                        <Label htmlFor="quote_id" className="text-foreground">
-                          Linked Quote (Optional)
-                        </Label>
-                        <Select name="quote_id">
-                          <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                            <SelectValue placeholder="Select a quote (optional)" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                            <SelectItem value="none" className="text-foreground hover:bg-primary/20">
-                              <span className="text-muted-foreground">None</span>
-                            </SelectItem>
-                            {quotes.map((quote) => (
-                              <SelectItem
-                                key={quote.id}
-                                value={quote.id}
-                                className="text-foreground hover:bg-primary/20"
-                              >
-                                <div className="flex flex-col gap-1 max-w-[300px]">
-                                  <span className="truncate text-sm font-medium">
-                                    {quote.content?.substring(0, 50)}...
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">— {quote.author}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="points_value" className="text-foreground">
-                          Points Value
-                        </Label>
-                        <Input
-                          id="points_value"
-                          name="points_value"
-                          type="number"
-                          required
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="max_submissions_per_user" className="text-foreground">
-                          Max Submissions Per User
-                        </Label>
-                        <Input
-                          id="max_submissions_per_user"
-                          name="max_submissions_per_user"
-                          type="number"
-                          defaultValue="1"
-                          min="1"
-                          max="10"
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          How many times can each user submit this mission? (1-10)
-                        </p>
-                      </div>
-
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor="mission_number" className="text-foreground">
@@ -992,30 +952,47 @@ export default function AdminPage() {
                             name="mission_number"
                             type="number"
                             min="1"
-                            placeholder="e.g., 1, 2, 3..."
+                            value={autoMissionNumber}
+                            readOnly
                             className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                           />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Mission number for identification (optional)
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">Auto-generated based on mission type</p>
                         </div>
                         <div>
-                          <Label htmlFor="display_order" className="text-foreground">
-                            Display Order
+                          <Label htmlFor="points_value" className="text-foreground">
+                            Points Value <span className="text-red-500">*</span>
                           </Label>
                           <Input
-                            id="display_order"
-                            name="display_order"
+                            id="points_value"
+                            name="points_value"
                             type="number"
-                            min="0"
-                            defaultValue="0"
-                            placeholder="0"
+                            min="1"
+                            max="1000"
+                            required
+                            placeholder="e.g., 10, 25, 50..."
                             className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            Lower numbers appear first (0 = highest priority)
+                            Points awarded when mission is completed (required)
                           </p>
                         </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="display_order" className="text-foreground">
+                          Display Order
+                        </Label>
+                        <Input
+                          id="display_order"
+                          name="display_order"
+                          type="number"
+                          min="0"
+                          defaultValue="0"
+                          placeholder="0"
+                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Lower numbers appear first (0 = highest priority)
+                        </p>
                       </div>
 
                       <div className="border-t border-white/20 dark:border-white/10 pt-6">
@@ -1039,7 +1016,7 @@ export default function AdminPage() {
                       <span className="sm:inline">Edit Activity</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle className="text-foreground">Edit Mission</DialogTitle>
                     </DialogHeader>
@@ -1161,18 +1138,6 @@ export default function AdminPage() {
                             />
                           </div>
                           <div>
-                            <Label htmlFor="edit-due_date" className="text-foreground">
-                              Due Date (Optional)
-                            </Label>
-                            <Input
-                              id="edit-due_date"
-                              name="due_date"
-                              type="date"
-                              defaultValue={editingMission.due_date || ""}
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-                          <div>
                             <Label htmlFor="edit-type" className="text-foreground">
                               Mission Type
                             </Label>
@@ -1228,64 +1193,41 @@ export default function AdminPage() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div>
-                            <Label htmlFor="edit-quote_id" className="text-foreground">
-                              Linked Quote (Optional)
-                            </Label>
-                            <Select name="quote_id" defaultValue={editingMission.quote_id || ""}>
-                              <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                                <SelectValue placeholder="Select a quote (optional)" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                                <SelectItem value="none" className="text-foreground hover:bg-primary/20">
-                                  <span className="text-muted-foreground">None</span>
-                                </SelectItem>
-                                {quotes.map((quote) => (
-                                  <SelectItem
-                                    key={quote.id}
-                                    value={quote.id}
-                                    className="text-foreground hover:bg-primary/20"
-                                  >
-                                    <div className="flex flex-col gap-1 max-w-[300px]">
-                                      <span className="truncate text-sm font-medium">
-                                        {quote.content?.substring(0, 50)}...
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">— {quote.author}</span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-points_value" className="text-foreground">
-                              Points Value
-                            </Label>
-                            <Input
-                              id="edit-points_value"
-                              name="points_value"
-                              type="number"
-                              defaultValue={editingMission.points_value.toString()}
-                              required
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-max_submissions_per_user" className="text-foreground">
-                              Max Submissions Per User
-                            </Label>
-                            <Input
-                              id="edit-max_submissions_per_user"
-                              name="max_submissions_per_user"
-                              type="number"
-                              defaultValue={editingMission.max_submissions_per_user?.toString() || "1"}
-                              min="1"
-                              max="10"
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              How many times can each user submit this mission? (1-10)
-                            </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="edit-mission_number" className="text-foreground">
+                                Mission Number
+                              </Label>
+                              <Input
+                                id="edit-mission_number"
+                                name="mission_number"
+                                type="number"
+                                min="1"
+                                defaultValue={editingMission.mission_number?.toString() || ""}
+                                placeholder="e.g., 1, 2, 3..."
+                                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Mission number for identification (optional)
+                              </p>
+                            </div>
+                            <div>
+                              <Label htmlFor="edit-display_order" className="text-foreground">
+                                Display Order
+                              </Label>
+                              <Input
+                                id="edit-display_order"
+                                name="display_order"
+                                type="number"
+                                min="0"
+                                defaultValue={editingMission.display_order?.toString() || "0"}
+                                placeholder="0"
+                                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Lower numbers appear first (0 = highest priority)
+                              </p>
+                            </div>
                           </div>
 
                           <div>
@@ -1473,7 +1415,7 @@ export default function AdminPage() {
                                     <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                                   </Button>
                                 </DialogTrigger>
-                                <DialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+                                <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                                   <DialogHeader>
                                     <DialogTitle className="text-foreground">Edit Mission</DialogTitle>
                                   </DialogHeader>
@@ -1595,18 +1537,6 @@ export default function AdminPage() {
                                           />
                                         </div>
                                         <div>
-                                          <Label htmlFor="edit-due_date" className="text-foreground">
-                                            Due Date (Optional)
-                                          </Label>
-                                          <Input
-                                            id="edit-due_date"
-                                            name="due_date"
-                                            type="date"
-                                            defaultValue={editingMission.due_date || ""}
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                        </div>
-                                        <div>
                                           <Label htmlFor="edit-type" className="text-foreground">
                                             Mission Type
                                           </Label>
@@ -1663,39 +1593,8 @@ export default function AdminPage() {
                                           </Select>
                                         </div>
                                         <div>
-                                          <Label htmlFor="edit-quote_id" className="text-foreground">
-                                            Linked Quote (Optional)
-                                          </Label>
-                                          <Select name="quote_id" defaultValue={editingMission.quote_id || ""}>
-                                            <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                                              <SelectValue placeholder="Select a quote (optional)" />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                                              <SelectItem value="none" className="text-foreground hover:bg-primary/20">
-                                                <span className="text-muted-foreground">None</span>
-                                              </SelectItem>
-                                              {quotes.map((quote) => (
-                                                <SelectItem
-                                                  key={quote.id}
-                                                  value={quote.id}
-                                                  className="text-foreground hover:bg-primary/20"
-                                                >
-                                                  <div className="flex flex-col gap-1 max-w-[300px]">
-                                                    <span className="truncate text-sm font-medium">
-                                                      {quote.content?.substring(0, 50)}...
-                                                    </span>
-                                                    <span className="text-xs text-muted-foreground">
-                                                      — {quote.author}
-                                                    </span>
-                                                  </div>
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div>
                                           <Label htmlFor="edit-points_value" className="text-foreground">
-                                            Points Value
+                                            Points Value <span className="text-red-500">*</span>
                                           </Label>
                                           <Input
                                             id="edit-points_value"
@@ -1782,7 +1681,7 @@ export default function AdminPage() {
                                     <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                                   </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mx-3 sm:mx-0">
+                                <AlertDialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0">
                                   <AlertDialogHeader>
                                     <AlertDialogTitle className="text-foreground">Delete Mission</AlertDialogTitle>
                                     <AlertDialogDescription className="text-muted-foreground">
@@ -1829,7 +1728,7 @@ export default function AdminPage() {
                     Add Resource
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mx-3 sm:mx-0 max-w-md sm:max-w-lg">
+                <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-lg">
                   <DialogHeader>
                     <DialogTitle className="text-foreground">Add New Resource</DialogTitle>
                   </DialogHeader>
@@ -1969,7 +1868,7 @@ export default function AdminPage() {
                                     <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                                   </Button>
                                 </DialogTrigger>
-                                <DialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mx-3 sm:mx-0 max-w-md sm:max-w-lg">
+                                <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-lg">
                                   <DialogHeader>
                                     <DialogTitle className="text-foreground">Edit Resource</DialogTitle>
                                   </DialogHeader>
@@ -2055,7 +1954,7 @@ export default function AdminPage() {
                                     <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                                   </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mx-3 sm:mx-0">
+                                <AlertDialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0">
                                   <AlertDialogHeader>
                                     <AlertDialogTitle className="text-foreground">Delete Resource</AlertDialogTitle>
                                     <AlertDialogDescription className="text-muted-foreground">

@@ -395,28 +395,15 @@ function AnswersDisplay({
           const answer = answers[key]
           if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
 
-          let questionTypeLabel = "Response"
-          if (key.toLowerCase().includes("pop quiz")) {
-            questionTypeLabel = "Pop Quiz Question"
-          } else if (key.toLowerCase().includes("reflection")) {
-            questionTypeLabel = "Article Reflection"
-          }
-
-          const numberMatch = key.match(/(\d+)\/(\d+)/)
-          const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
+          const questionLabel = key
 
           return (
             <div key={key} className="bg-muted/30 rounded-lg p-3 space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-primary">
-                  {questionTypeLabel} {questionNumber}
-                </span>
+                <span className="text-xs font-semibold text-primary">{questionLabel}</span>
               </div>
-              <p className="text-sm font-medium text-foreground">{key}</p>
               <div className="bg-background/50 rounded-md p-2 border border-muted/50">
-                <p className="text-xs text-muted-foreground mb-1">
-                  {questionTypeLabel.includes("Quiz") ? "Selected:" : "Response:"}
-                </p>
+                <p className="text-xs text-muted-foreground mb-1">Response:</p>
                 <p className="text-sm text-foreground whitespace-pre-wrap">
                   {typeof answer === "string" ? answer : JSON.stringify(answer, null, 2)}
                 </p>
@@ -436,26 +423,14 @@ function AnswersDisplay({
 
         if (!answer || (typeof answer === "string" && answer.trim() === "")) return null
 
-        let questionTypeLabel = "Response"
-        if (fieldName.toLowerCase().includes("pop quiz")) {
-          questionTypeLabel = "Pop Quiz Question"
-        } else if (fieldName.toLowerCase().includes("reflection")) {
-          questionTypeLabel = "Article Reflection"
-        } else if (fieldName.toLowerCase().includes("activity")) {
-          questionTypeLabel = "Activity Reflection"
-        }
-
-        const numberMatch = fieldName.match(/(\d+)\/(\d+)/)
-        const questionNumber = numberMatch ? `${numberMatch[1]}/${numberMatch[2]}` : ""
+        const questionLabel = question.label || fieldName
 
         const questionHelperText = question.helperText || question.helper_text || question.description
 
         return (
           <div key={fieldName} className="bg-muted/30 rounded-lg p-3 space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-primary">
-                {questionTypeLabel} {questionNumber}
-              </span>
+              <span className="text-xs font-semibold text-primary">{questionLabel}</span>
             </div>
 
             {questionHelperText && questionHelperText !== question.label && (
@@ -463,9 +438,7 @@ function AnswersDisplay({
             )}
 
             <div className="bg-background/50 rounded-md p-2 border border-muted/50">
-              <p className="text-xs text-muted-foreground mb-1">
-                {questionTypeLabel.includes("Quiz") ? "Selected:" : "Response:"}
-              </p>
+              <p className="text-xs text-muted-foreground mb-1">Response:</p>
               <p className="text-sm text-foreground whitespace-pre-wrap">
                 {typeof answer === "string" ? answer : JSON.stringify(answer, null, 2)}
               </p>

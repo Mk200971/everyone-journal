@@ -3,7 +3,7 @@
 import { CardContent as UICardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Clock, Users, Gauge, Calendar, CheckCircle, FileText, XCircle } from "lucide-react"
+import { ArrowRight, Clock, Users, Gauge, CheckCircle, FileText, XCircle } from "lucide-react"
 import Link from "next/link"
 import { lazy, Suspense } from "react"
 import Image from "next/image"
@@ -269,13 +269,6 @@ export function MissionCard({ mission, priority = false }: MissionCardProps) {
             <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
               <Gauge className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
               <span>{mission.support_status}</span>
-            </div>
-          )}
-
-          {mission.due_date && (
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-              <Calendar className="h-3 w-3 sm:h-4 sm:w-4" aria-hidden="true" />
-              <span>{formatDueDate(mission.due_date)}</span>
             </div>
           )}
         </div>
