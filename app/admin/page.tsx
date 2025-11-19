@@ -1,38 +1,33 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect, useTransition } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  Settings,
-  Plus,
-  Edit,
-  Home,
-  Download,
-  BookOpen,
-  Video,
-  FileText,
-  Headphones,
-  MessageCircle,
-  Send,
-  Trash2,
-  CheckCircle,
-  GripVertical,
-} from "lucide-react"
-import { createMission, updateMission, deleteMission, exportAllData, updateMissionOrder } from "@/lib/actions"
-import { createClient } from "@/lib/supabase/client"
-import Link from "next/link"
-import * as XLSX from "xlsx"
-import { toast } from "@/components/ui/use-toast"
-import { SchemaBuilder } from "@/components/schema-builder"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +39,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Plus, Trash2, Edit, MessageCircle, Send, Download, BookOpen, Video, FileText, Headphones, Home, GripVertical, Users, Target, CheckCircle, List, Layers, FileSpreadsheet } from 'lucide-react'
+import { createClient } from "@/lib/supabase/client"
+import { SchemaBuilder } from "@/components/schema-builder"
+import { createMission, updateMission, deleteMission, exportAllData, updateMissionOrder } from "@/lib/actions"
+import { getPrograms, createProgram, updateProgram, deleteProgram, getMissionPrograms, getFullExportData } from "@/lib/admin-actions"
+import { toast } from "@/hooks/use-toast"
+import Link from "next/link"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface Mission {
   id: string
@@ -61,7 +64,7 @@ interface Mission {
   submission_schema?: any
   max_submissions_per_user?: number
   instructions?: string | null
-  tips_inspiration?: string | null // Changed from 'tips' to 'tips_inspiration'
+  tips_inspiration?: string | null
   mission_number?: number
   display_order?: number
 }
@@ -75,15 +78,66 @@ interface Resource {
   created_at: string
 }
 
+interface Program {
+  id: string
+  title: string
+  description: string | null
+  is_default: boolean
+}
+
+interface DashboardItem {
+  title: string
+  description: string
+  icon: React.ElementType
+  href: string
+}
+
+const dashboardItems: DashboardItem[] = [
+  {
+    title: "User Management",
+    description: "Manage user roles and permissions",
+    icon: Users,
+    href: "/admin/users",
+  },
+  {
+    title: "Program Management",
+    description: "Create programs and bulk assign users",
+    icon: Layers,
+    href: "/admin/programs",
+  },
+  {
+    title: "Mission Assignments",
+    description: "Assign missions to participants",
+    icon: Target,
+    href: "/admin/missions",
+  },
+  {
+    title: "Submissions",
+    description: "Review and approve submissions",
+    icon: CheckCircle,
+    href: "/admin/submissions",
+  },
+  {
+    title: "Quotes",
+    description: "Manage inspirational quotes",
+    icon: List,
+    href: "/admin/quotes",
+  },
+]
+
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState("")
   const [missions, setMissions] = useState<Mission[]>([])
   const [resources, setResources] = useState<Resource[]>([])
+  const [programs, setPrograms] = useState<Program[]>([])
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingMission, setEditingMission] = useState<Mission | null>(null)
+  const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>([])
+  
+  const [isAddProgramDialogOpen, setIsAddProgramDialogOpen] = useState(false)
+  const [isEditProgramDialogOpen, setIsEditProgramDialogOpen] = useState(false)
+  const [editingProgram, setEditingProgram] = useState<Program | null>(null)
+
   const [isAddResourceDialogOpen, setIsAddResourceDialogOpen] = useState(false)
   const [isEditResourceDialogOpen, setIsEditResourceDialogOpen] = useState(false)
   const [editingResource, setEditingResource] = useState<Resource | null>(null)
@@ -98,12 +152,25 @@ export default function AdminPage() {
   const [editMissionSchema, setEditMissionSchema] = useState<any>(null)
   const [draggedMission, setDraggedMission] = useState<Mission | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null) // Added dragOverIndex state
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [selectedMissionType, setSelectedMissionType] = useState<string>("")
   const [autoMissionNumber, setAutoMissionNumber] = useState<number>(1)
+  const [isExporting, setIsExporting] = useState(false)
 
   const [isCreatingMission, startCreateTransition] = useTransition()
   const [isUpdatingMission, startUpdateTransition] = useTransition()
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file && file.size > 4 * 1024 * 1024) { // 4MB limit
+      toast({
+        title: "File too large",
+        description: "Image must be less than 4MB",
+        variant: "destructive",
+      })
+      e.target.value = "" // Clear the input
+    }
+  }
 
   const missionTypes = [
     { value: "Action", label: "Action" },
@@ -119,15 +186,20 @@ export default function AdminPage() {
     { value: "Podcast", label: "Podcast", icon: Headphones },
   ]
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (password === "EJ123") {
-      setIsAuthenticated(true)
-      setError("")
-    } else {
-      setError("Incorrect password")
+  useEffect(() => {
+    fetchMissions()
+    fetchResources()
+    fetchQuotes()
+    fetchPrograms()
+  }, [])
+
+  useEffect(() => {
+    if (selectedMissionType) {
+      const typeMissions = missions.filter((m) => m.type === selectedMissionType)
+      const maxNumber = typeMissions.reduce((max, m) => Math.max(max, m.mission_number || 0), 0)
+      setAutoMissionNumber(maxNumber + 1)
     }
-  }
+  }, [selectedMissionType, missions])
 
   const fetchMissions = async () => {
     const supabase = createClient()
@@ -161,35 +233,9 @@ export default function AdminPage() {
     }
   }
 
-  const calculateNextMissionNumber = (type: string) => {
-    if (!type || missions.length === 0) {
-      return 1
-    }
-
-    // Filter missions by type and get the highest mission_number
-    const missionsOfType = missions.filter((m) => m.type === type)
-    if (missionsOfType.length === 0) {
-      return 1
-    }
-
-    const maxNumber = Math.max(...missionsOfType.map((m) => m.mission_number || 0))
-    return maxNumber + 1
-  }
-
-  useEffect(() => {
-    if (selectedMissionType) {
-      const nextNumber = calculateNextMissionNumber(selectedMissionType)
-      setAutoMissionNumber(nextNumber)
-    }
-  }, [selectedMissionType, missions])
-
   const handleCreateMission = async (formData: FormData) => {
     startCreateTransition(async () => {
       try {
-        console.log("[v0] Starting mission creation")
-        console.log("[v0] FormData entries:", Array.from(formData.entries()))
-
-        // Clean up resource_id and quote_id - convert "none" to null
         const resourceId = formData.get("resource_id") as string
         const quoteId = formData.get("quote_id") as string
 
@@ -201,7 +247,6 @@ export default function AdminPage() {
           formData.delete("quote_id")
         }
 
-        // Convert due_date to ISO datetime format if provided
         const dueDate = formData.get("due_date") as string
         if (dueDate) {
           const dateObj = new Date(dueDate)
@@ -210,14 +255,14 @@ export default function AdminPage() {
           formData.delete("due_date")
         }
 
-        // Add submission schema if exists
         if (createMissionSchema) {
           formData.set("submission_schema", JSON.stringify(createMissionSchema))
         }
+        
+        // Add selected programs
+        formData.append("program_ids", JSON.stringify(selectedProgramIds))
 
-        console.log("[v0] Calling createMission action")
         const result = await createMission(formData)
-        console.log("[v0] createMission result:", result)
 
         if (!result.success) {
           toast({
@@ -230,13 +275,13 @@ export default function AdminPage() {
 
         setIsAddDialogOpen(false)
         setCreateMissionSchema(null)
+        setSelectedProgramIds([]) // Reset selection
         await fetchMissions()
         toast({
           title: "Mission Created",
           description: "The mission has been created successfully.",
         })
       } catch (error) {
-        console.log("[v0] Error in handleCreateMission:", error)
         toast({
           title: "Creation Failed",
           description: `Failed to create mission: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -249,7 +294,6 @@ export default function AdminPage() {
   const handleUpdateMission = async (formData: FormData) => {
     startUpdateTransition(async () => {
       try {
-        // Clean up resource_id and quote_id - convert "none" to null
         const resourceId = formData.get("resource_id") as string
         const quoteId = formData.get("quote_id") as string
 
@@ -261,7 +305,6 @@ export default function AdminPage() {
           formData.delete("quote_id")
         }
 
-        // Convert due_date to ISO datetime format if provided
         const dueDate = formData.get("due_date") as string
         if (dueDate) {
           const dateObj = new Date(dueDate)
@@ -270,10 +313,17 @@ export default function AdminPage() {
           formData.delete("due_date")
         }
 
-        // Add submission schema if exists
         if (editMissionSchema !== undefined) {
           formData.set("submission_schema", editMissionSchema ? JSON.stringify(editMissionSchema) : "")
         }
+
+        // Handle image deletion
+        if (formData.get("delete_image") === "true") {
+          formData.append("image_url", ""); // Clear image_url in backend if delete_image is true
+        }
+
+        // Add selected programs
+        formData.append("program_ids", JSON.stringify(selectedProgramIds))
 
         const result = await updateMission(formData)
 
@@ -289,6 +339,7 @@ export default function AdminPage() {
         setIsEditDialogOpen(false)
         setEditingMission(null)
         setEditMissionSchema(null)
+        setSelectedProgramIds([]) // Reset selection
         await fetchMissions()
         toast({
           title: "Mission Updated",
@@ -308,8 +359,16 @@ export default function AdminPage() {
     try {
       await deleteMission(formData)
       fetchMissions()
+      toast({
+        title: "Mission Deleted",
+        description: "The mission has been deleted successfully.",
+      })
     } catch (error) {
-      console.error("Failed to delete mission:", error)
+      toast({
+        title: "Delete Failed",
+        description: `Failed to delete mission: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
     }
   }
 
@@ -327,11 +386,16 @@ export default function AdminPage() {
 
       setIsAddResourceDialogOpen(false)
       fetchResources()
-      // Revalidate the resources page
-      window.location.href = window.location.href
+      toast({
+        title: "Resource Created",
+        description: "The resource has been created successfully.",
+      })
     } catch (error) {
-      console.error("Failed to create resource:", error)
-      alert(`Failed to create resource: ${error instanceof Error ? error.message : "Unknown error"}`)
+      toast({
+        title: "Creation Failed",
+        description: `Failed to create resource: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
     }
   }
 
@@ -353,11 +417,16 @@ export default function AdminPage() {
       setIsEditResourceDialogOpen(false)
       setEditingResource(null)
       fetchResources()
-      // Revalidate the resources page
-      window.location.href = window.location.href
+      toast({
+        title: "Resource Updated",
+        description: "The resource has been updated successfully.",
+      })
     } catch (error) {
-      console.error("Failed to update resource:", error)
-      alert(`Failed to update resource: ${error instanceof Error ? error.message : "Unknown error"}`)
+      toast({
+        title: "Update Failed",
+        description: `Failed to update resource: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
     }
   }
 
@@ -372,136 +441,16 @@ export default function AdminPage() {
       if (error) throw error
 
       fetchResources()
-      // Revalidate the resources page
-      window.location.href = window.location.href
+      toast({
+        title: "Resource Deleted",
+        description: "The resource has been deleted successfully.",
+      })
     } catch (error) {
-      console.error("Failed to delete resource:", error)
-      alert(`Failed to delete resource: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-
-  const exportToExcel = async () => {
-    try {
-      console.log("[v0] Starting comprehensive Excel export...")
-
-      // Call server action that uses admin client
-      const result = await exportAllData()
-
-      if (!result.success) {
-        throw new Error(result.error || "Export failed")
-      }
-
-      const { missions, profiles, submissions, resources, noticeboard_items } = result.data
-
-      console.log("[v0] Missions fetched:", missions.length, "records")
-      console.log("[v0] Profiles fetched:", profiles.length, "records")
-      console.log("[v0] Submissions fetched:", submissions.length, "records")
-      console.log("[v0] Resources fetched:", resources.length, "records")
-      console.log("[v0] Noticeboard items fetched:", noticeboard_items.length, "records")
-
-      // Check for any errors
-      const errors = []
-
-      if (errors.length > 0) {
-        console.error("[v0] Export errors:", errors)
-        alert(`Some data could not be exported:\n${errors.join("\n")}`)
-      }
-
-      const workbook = XLSX.utils.book_new()
-      let sheetsAdded = 0
-
-      // Add missions sheet
-      if (missions && missions.length > 0) {
-        const missionsSheet = XLSX.utils.json_to_sheet(missions)
-        XLSX.utils.book_append_sheet(workbook, missionsSheet, "Missions")
-        sheetsAdded++
-        console.log("[v0] Added Missions sheet")
-      }
-
-      // Add profiles sheet (all users)
-      if (profiles && profiles.length > 0) {
-        const profilesSheet = XLSX.utils.json_to_sheet(profiles)
-        XLSX.utils.book_append_sheet(workbook, profilesSheet, "Users")
-        sheetsAdded++
-        console.log("[v0] Added Users sheet")
-      }
-
-      // Add submissions sheet (all user responses)
-      if (submissions && submissions.length > 0) {
-        const submissionsSheet = XLSX.utils.json_to_sheet(submissions)
-        XLSX.utils.book_append_sheet(workbook, submissionsSheet, "Submissions")
-        sheetsAdded++
-        console.log("[v0] Added Submissions sheet with", submissions.length, "records")
-      }
-
-      // Add resources sheet
-      if (resources && resources.length > 0) {
-        const resourcesSheet = XLSX.utils.json_to_sheet(resources)
-        XLSX.utils.book_append_sheet(workbook, resourcesSheet, "Resources")
-        sheetsAdded++
-        console.log("[v0] Added Resources sheet")
-      }
-
-      // Add noticeboard items sheet (quotes)
-      if (noticeboard_items && noticeboard_items.length > 0) {
-        const noticeboardSheet = XLSX.utils.json_to_sheet(noticeboard_items)
-        XLSX.utils.book_append_sheet(workbook, noticeboardSheet, "Quotes")
-        sheetsAdded++
-        console.log("[v0] Added Quotes sheet")
-      }
-
-      console.log("[v0] Workbook created with", sheetsAdded, "sheets:", workbook.SheetNames)
-
-      if (sheetsAdded === 0) {
-        alert("No data available to export. Please check your database connection.")
-        return
-      }
-
-      // Generate filename with current date and time
-      const now = new Date()
-      const date = now.toISOString().split("T")[0]
-      const time = now.toTimeString().split(" ")[0].replace(/:/g, "-")
-      const filename = `everyone-journal-complete-export-${date}-${time}.xlsx`
-
-      // Create binary string from workbook
-      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
-
-      // Create blob and download
-      const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
-      const url = window.URL.createObjectURL(blob)
-
-      // Create temporary download link
-      const link = document.createElement("a")
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-
-      // Cleanup
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      console.log("[v0] Complete Excel export successful:", filename)
-
-      // Show success message with details
-      const totalRecords = [
-        missions.length || 0,
-        profiles.length || 0,
-        submissions.length || 0,
-        resources.length || 0,
-        noticeboard_items.length || 0,
-      ].reduce((sum, count) => sum + count, 0)
-
-      alert(
-        `Complete database export successful!\n\n` +
-          `📊 ${sheetsAdded} sheets exported\n` +
-          `📝 ${totalRecords} total records\n` +
-          `📋 Includes: ${workbook.SheetNames.join(", ")}\n\n` +
-          `File: ${filename}`,
-      )
-    } catch (error) {
-      console.error("[v0] Failed to export complete database:", error)
-      alert(`Failed to export data: ${error instanceof Error ? error.message : "Unknown error"}`)
+      toast({
+        title: "Delete Failed",
+        description: `Failed to delete resource: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
     }
   }
 
@@ -541,7 +490,6 @@ export default function AdminPage() {
         ])
       }
     } catch (error) {
-      console.error("Chat error:", error)
       setChatMessages((prev) => [
         ...prev,
         {
@@ -556,768 +504,379 @@ export default function AdminPage() {
   }
 
   const handleDragStart = (e: React.DragEvent, mission: Mission, index: number) => {
-    console.log("[v0] Drag started:", mission.title, "at index", index)
     setDraggedMission(mission)
-    setDraggedIndex(index) // Set the dragged index
+    setDraggedIndex(index)
     e.dataTransfer.effectAllowed = "move"
-    // Add a slight delay to allow the drag image to be set
-    setTimeout(() => {
-      const target = e.target as HTMLElement
-      target.style.opacity = "0.5"
-    }, 0)
-  }
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    console.log("[v0] Drag ended")
-    const target = e.target as HTMLElement
-    target.style.opacity = "1"
-    setDraggedMission(null)
-    setDraggedIndex(null) // Clear the dragged index
-    setDragOverIndex(null) // Reset dragOverIndex on drag end
   }
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
     setDragOverIndex(index)
   }
 
-  const handleDragLeave = () => {
-    setDragOverIndex(null)
-  }
-
-  const handleDrop = async (e: React.DragEvent, targetMission: Mission, targetIndex: number) => {
-    e.preventDefault()
-    console.log("[v0] Drop triggered on:", targetMission.title, "at index", targetIndex)
-    setDragOverIndex(null)
-
-    if (!draggedMission || draggedMission.id === targetMission.id) {
-      console.log("[v0] Drop cancelled - same mission or no dragged mission")
+  const handleDragEnd = async () => {
+    if (draggedIndex === null || dragOverIndex === null || draggedIndex === dragOverIndex) {
+      setDraggedMission(null)
+      setDraggedIndex(null)
+      setDragOverIndex(null)
       return
     }
 
-    console.log("[v0] Reordering from", draggedMission.title, "to", targetMission.title)
-
-    // Create a new array with reordered missions
     const reorderedMissions = [...missions]
-    const draggedIndex = reorderedMissions.findIndex((m) => m.id === draggedMission.id)
+    const [movedMission] = reorderedMissions.splice(draggedIndex, 1)
+    reorderedMissions.splice(dragOverIndex, 0, movedMission)
 
-    // Remove dragged item and insert at new position
-    reorderedMissions.splice(draggedIndex, 1)
-    reorderedMissions.splice(targetIndex, 0, draggedMission)
-
-    // Update display_order for all affected missions
     const updatedMissions = reorderedMissions.map((mission, index) => ({
       ...mission,
       display_order: index,
     }))
 
-    console.log(
-      "[v0] Updated missions order:",
-      updatedMissions.map((m) => `${m.title}:${m.display_order}`),
-    )
-
-    // Optimistically update UI
     setMissions(updatedMissions)
 
+    const orderUpdates = updatedMissions.map((mission) => ({
+      id: mission.id,
+      display_order: mission.display_order,
+    }))
+
     try {
-      console.log("[v0] Calling server action to update mission order...")
-
-      // Prepare data for server action
-      const missionsToUpdate = updatedMissions.map((mission) => ({
-        id: mission.id,
-        display_order: mission.display_order,
-      }))
-
-      await updateMissionOrder(missionsToUpdate)
-
-      console.log("[v0] Server action completed successfully")
+      await updateMissionOrder(orderUpdates)
       toast({
         title: "Order Updated",
         description: "Mission order has been saved successfully.",
       })
     } catch (error) {
-      console.error("[v0] Failed to update mission order:", error)
       toast({
         title: "Update Failed",
-        description: "Failed to save mission order. Please try again.",
+        description: "Failed to save mission order.",
         variant: "destructive",
       })
-      // Revert on error
       fetchMissions()
+    }
+
+    setDraggedMission(null)
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }
+
+  const handleExport = async () => {
+    try {
+      setIsExporting(true)
+      const data = await exportAllData()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `everyone-journal-export-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast({
+        title: "Export Successful",
+        description: "Data has been exported successfully.",
+      })
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: `Failed to export data: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
+    } finally {
+      setIsExporting(false)
     }
   }
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchMissions()
-      fetchResources()
-      fetchQuotes()
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true)
+      toast({
+        title: "Preparing Export",
+        description: "Fetching all database records...",
+      })
+
+      const data = await getFullExportData()
+      
+      // Dynamically import xlsx to avoid bloating the bundle
+      const XLSX = await import("xlsx")
+
+      const wb = XLSX.utils.book_new()
+
+      // Helper to add a sheet
+      const addSheet = (name: string, jsonData: any[]) => {
+        if (jsonData.length === 0) {
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ info: "No data available" }]), name)
+          return
+        }
+        const ws = XLSX.utils.json_to_sheet(jsonData)
+        XLSX.utils.book_append_sheet(wb, ws, name)
+      }
+
+      // Add sheets for each table
+      addSheet("Profiles", data.profiles)
+      addSheet("Missions", data.missions)
+      addSheet("Submissions", data.submissions)
+      addSheet("Resources", data.resources)
+      addSheet("Programs", data.programs)
+      addSheet("Mission Programs", data.mission_programs)
+      addSheet("Mission Assignments", data.mission_assignments)
+      addSheet("Mission Types", data.mission_types)
+
+      // Generate filename with date
+      const date = new Date().toISOString().split("T")[0]
+      const fileName = `everyone-journal-full-export-${date}.xlsx`
+
+      // Write file
+      XLSX.writeFile(wb, fileName)
+
+      toast({
+        title: "Export Complete",
+        description: `Successfully exported data to ${fileName}`,
+      })
+    } catch (error) {
+      console.error("Export failed:", error)
+      toast({
+        title: "Export Failed",
+        description: "There was an error generating the Excel file.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsExporting(false)
     }
-  }, [isAuthenticated])
+  }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-3 sm:p-4 relative overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-          <div
-            className="absolute top-40 right-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse"
-            style={{ animationDelay: "2s" }}
-          ></div>
-          <div
-            className="absolute bottom-20 left-1/3 w-80 h-80 bg-accent/10 rounded-full blur-3xl animate-pulse"
-            style={{ animationDelay: "4s" }}
-          ></div>
-        </div>
 
-        <Card className="w-full max-w-md bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 relative z-10">
-          <CardHeader className="text-center p-4 sm:p-6">
-            <div className="flex justify-center mb-3 sm:mb-4">
-              <div className="p-2 sm:p-3 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg">
-                <Settings className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
-              </div>
-            </div>
-            <CardTitle className="text-foreground text-xl sm:text-2xl">Admin Access</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0">
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="password" className="text-foreground text-sm sm:text-base">
-                  Password
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground h-11 sm:h-10"
-                />
-              </div>
-              {error && <p className="text-red-500 text-sm">{error}</p>}
-              <Button
-                type="submit"
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 h-11 sm:h-10"
-              >
-                Submit
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+  // Programs Management Functions
+  const fetchPrograms = async () => {
+    try {
+      const data = await getPrograms()
+      setPrograms(data)
+    } catch (error) {
+      console.error("Failed to fetch programs", error)
+    }
+  }
+
+  const handleCreateProgram = async (formData: FormData) => {
+    try {
+      const title = formData.get("title") as string
+      const description = formData.get("description") as string
+      
+      const result = await createProgram(title, description)
+      
+      if (result.success) {
+        setIsAddProgramDialogOpen(false)
+        fetchPrograms()
+        toast({
+          title: "Program Created",
+          description: "The program has been created successfully.",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Creation Failed",
+        description: "Failed to create program",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUpdateProgram = async (formData: FormData) => {
+    try {
+      const id = formData.get("id") as string
+      const title = formData.get("title") as string
+      const description = formData.get("description") as string
+      
+      const result = await updateProgram(id, title, description)
+      
+      if (result.success) {
+        setIsEditProgramDialogOpen(false)
+        setEditingProgram(null)
+        fetchPrograms()
+        toast({
+          title: "Program Updated",
+          description: "The program has been updated successfully.",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Update Failed",
+        description: "Failed to update program",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteProgram = async (formData: FormData) => {
+    try {
+      const id = formData.get("id") as string
+      await deleteProgram(id)
+      fetchPrograms()
+      toast({
+        title: "Program Deleted",
+        description: "The program has been deleted successfully.",
+      })
+    } catch (error) {
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete program",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const openEditMissionDialog = async (mission: Mission) => {
+    setEditingMission(mission)
+    setEditMissionSchema(mission.submission_schema)
+    
+    // Fetch assigned programs
+    const assignedPrograms = await getMissionPrograms(mission.id)
+    setSelectedProgramIds(assignedPrograms)
+    
+    setIsEditDialogOpen(true)
+  }
+
+  const toggleProgramSelection = (programId: string) => {
+    setSelectedProgramIds(prev => 
+      prev.includes(programId) 
+        ? prev.filter(id => id !== programId)
+        : [...prev, programId]
     )
   }
 
   return (
-    <div className="min-h-screen p-3 sm:p-4 relative overflow-hidden bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-        <div
-          className="absolute top-40 right-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "2s" }}
-        ></div>
-        <div
-          className="absolute bottom-20 left-1/3 w-80 h-80 bg-accent/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "4s" }}
-        ></div>
-      </div>
-
-      <div className="max-w-6xl mx-auto space-y-6 sm:space-8 relative z-10">
-        <header className="sticky top-0 z-50 py-3 sm:py-6 mb-6 sm:mb-12 bg-white/10 dark:bg-black/20 backdrop-blur-xl border-b border-white/20 dark:border-white/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-1 sm:mb-2 text-balance">
-                Journal Management
-              </h1>
-              <p className="text-muted-foreground text-sm sm:text-lg">Create and manage journal missions for users</p>
-            </div>
-            <div className="relative flex items-center">
-              <div className="flex items-center gap-2 sm:gap-4 flex-wrap pb-2 sm:pb-0">
-                {/* Navigation Group */}
-                <Link href="/" className="flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 h-12 sm:h-11 px-4 sm:px-6 whitespace-nowrap"
-                  >
-                    <Home className="h-4 w-4" />
-                    <span className="hidden sm:inline">Back to Home</span>
-                  </Button>
-                </Link>
-
-                {/* Management Group */}
-                <Link href="/admin/submissions" className="flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 h-12 sm:h-11 px-4 sm:px-6 whitespace-nowrap"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="hidden sm:inline">Review Submissions</span>
-                  </Button>
-                </Link>
-                <Link href="/admin/quotes" className="flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 h-12 sm:h-11 px-4 sm:px-6 whitespace-nowrap"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    <span className="hidden sm:inline">Manage Noticeboard</span>
-                  </Button>
-                </Link>
-
-                {/* Tools Group */}
-                <Button
-                  onClick={exportToExcel}
-                  variant="outline"
-                  className="flex-shrink-0 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 h-12 sm:h-11 px-4 sm:px-6 whitespace-nowrap"
-                >
-                  <Download className="h-4 w-4" />
-                  <span className="hidden sm:inline">Export Excel</span>
-                </Button>
-                <Button
-                  onClick={() => setIsChatOpen(true)}
-                  variant="outline"
-                  className="flex-shrink-0 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 h-12 sm:h-11 px-4 sm:px-6 whitespace-nowrap"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  <span className="hidden sm:inline">AI Chat</span>
-                </Button>
-
-                {/* Action Group */}
-                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 h-12 sm:h-11 px-4 sm:px-6 whitespace-nowrap">
-                      <Plus className="h-4 w-4" />
-                      <span className="hidden sm:inline">Add New Activity</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle className="text-foreground">Add New Mission</DialogTitle>
-                    </DialogHeader>
-                    <form action={handleCreateMission} className="space-y-4">
-                      <div>
-                        <Label htmlFor="title" className="text-foreground">
-                          Title
-                        </Label>
-                        <Input
-                          id="title"
-                          name="title"
-                          required
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="description" className="text-foreground">
-                          Description
-                        </Label>
-                        <Textarea
-                          id="description"
-                          name="description"
-                          required
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="instructions" className="text-foreground">
-                          Mission Instructions (Optional)
-                        </Label>
-                        <Textarea
-                          id="instructions"
-                          name="instructions"
-                          placeholder="Enter step-by-step instructions for completing this mission..."
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                          rows={4}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="tips_inspiration" className="text-foreground">
-                          {" "}
-                          {/* Updated label */}
-                          Tips & Inspiration (Optional)
-                        </Label>
-                        <Textarea
-                          id="tips_inspiration" // Updated id
-                          name="tips_inspiration" // Updated name
-                          placeholder="Share helpful tips, inspiration, or examples to guide users..."
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                          rows={4}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="mission-image" className="text-foreground">
-                          Mission Image (Optional)
-                        </Label>
-                        <Input
-                          id="mission-image"
-                          name="mission_image"
-                          type="file"
-                          accept="image/*"
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Upload an image to make the mission more engaging
-                        </p>
-                      </div>
-                      <div>
-                        <Label htmlFor="duration" className="text-foreground">
-                          Duration
-                        </Label>
-                        <Input
-                          id="duration"
-                          name="duration"
-                          placeholder="e.g., 1 Day, 2 Hours, 1 Week"
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="coordinator" className="text-foreground">
-                          Coordinator
-                        </Label>
-                        <Input
-                          id="coordinator"
-                          name="coordinator"
-                          placeholder="e.g., With Coordinator, Self-Guided"
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="support_status" className="text-foreground">
-                          Support Status
-                        </Label>
-                        <Input
-                          id="support_status"
-                          name="support_status"
-                          placeholder="e.g., Supported, Independent, Team-Based"
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="type" className="text-foreground">
-                          Mission Type
-                        </Label>
-                        <Select name="type" required onValueChange={(value) => setSelectedMissionType(value)}>
-                          <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                            <SelectValue placeholder="Select mission type" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                            {missionTypes.map((type) => (
-                              <SelectItem
-                                key={type.value}
-                                value={type.value}
-                                className="text-foreground hover:bg-primary/20"
-                              >
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="resource_id" className="text-foreground">
-                          Linked Resource (Optional)
-                        </Label>
-                        <Select name="resource_id">
-                          <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                            <SelectValue placeholder="Select a resource (optional)" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                            <SelectItem value="none" className="text-foreground hover:bg-primary/20">
-                              <span className="text-muted-foreground">None</span>
-                            </SelectItem>
-                            {resources.map((resource) => {
-                              const typeConfig = resourceTypes.find((t) => t.value === resource.type)
-                              return (
-                                <SelectItem
-                                  key={resource.id}
-                                  value={resource.id}
-                                  className="text-foreground hover:bg-primary/20"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {typeConfig && <typeConfig.icon className="h-4 w-4" />}
-                                    <span className="truncate max-w-[200px]">{resource.title}</span>
-                                  </div>
-                                </SelectItem>
-                              )
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="mission_number" className="text-foreground">
-                            Mission Number
-                          </Label>
-                          <Input
-                            id="mission_number"
-                            name="mission_number"
-                            type="number"
-                            min="1"
-                            value={autoMissionNumber}
-                            readOnly
-                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">Auto-generated based on mission type</p>
-                        </div>
-                        <div>
-                          <Label htmlFor="points_value" className="text-foreground">
-                            Points Value <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            id="points_value"
-                            name="points_value"
-                            type="number"
-                            min="1"
-                            max="1000"
-                            required
-                            placeholder="e.g., 10, 25, 50..."
-                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Points awarded when mission is completed (required)
-                          </p>
-                        </div>
-                      </div>
-                      <div>
-                        <Label htmlFor="display_order" className="text-foreground">
-                          Display Order
-                        </Label>
-                        <Input
-                          id="display_order"
-                          name="display_order"
-                          type="number"
-                          min="0"
-                          defaultValue="0"
-                          placeholder="0"
-                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Lower numbers appear first (0 = highest priority)
-                        </p>
-                      </div>
-
-                      <div className="border-t border-white/20 dark:border-white/10 pt-6">
-                        <SchemaBuilder initialSchema={null} onSchemaChange={setCreateMissionSchema} />
-                      </div>
-
-                      <Button
-                        type="submit"
-                        disabled={isCreatingMission}
-                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                      >
-                        {isCreatingMission ? "Creating..." : "Create Mission"}
-                      </Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-                <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 h-12 sm:h-11 px-4 sm:px-6">
-                      <Edit className="h-4 w-4" />
-                      <span className="sm:inline">Edit Activity</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle className="text-foreground">Edit Mission</DialogTitle>
-                    </DialogHeader>
-                    <form action={handleUpdateMission} className="space-y-4">
-                      {editingMission && (
-                        <>
-                          <input type="hidden" name="id" value={editingMission.id} />
-                          <div>
-                            <Label htmlFor="edit-title" className="text-foreground">
-                              Title
-                            </Label>
-                            <Input
-                              id="edit-title"
-                              name="title"
-                              defaultValue={editingMission.title}
-                              required
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-description" className="text-foreground">
-                              Description
-                            </Label>
-                            <Textarea
-                              id="edit-description"
-                              name="description"
-                              defaultValue={editingMission.description}
-                              required
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="edit-mission_number" className="text-foreground">
-                                Mission Number
-                              </Label>
-                              <Input
-                                id="edit-mission_number"
-                                name="mission_number"
-                                type="number"
-                                min="1"
-                                defaultValue={editingMission.mission_number?.toString() || ""}
-                                placeholder="e.g., 1, 2, 3..."
-                                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                              />
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Mission number for identification (optional)
-                              </p>
-                            </div>
-                            <div>
-                              <Label htmlFor="edit-display_order" className="text-foreground">
-                                Display Order
-                              </Label>
-                              <Input
-                                id="edit-display_order"
-                                name="display_order"
-                                type="number"
-                                min="0"
-                                defaultValue={editingMission.display_order?.toString() || "0"}
-                                placeholder="0"
-                                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                              />
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Lower numbers appear first (0 = highest priority)
-                              </p>
-                            </div>
-                          </div>
-
-                          <div>
-                            <Label htmlFor="edit-mission-image" className="text-foreground">
-                              Mission Image (Optional)
-                            </Label>
-                            <Input
-                              id="edit-mission-image"
-                              name="mission_image"
-                              type="file"
-                              accept="image/*"
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3"
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Upload an image to make the mission more engaging
-                            </p>
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-duration" className="text-foreground">
-                              Duration
-                            </Label>
-                            <Input
-                              id="edit-duration"
-                              name="duration"
-                              defaultValue={editingMission.duration || ""}
-                              placeholder="e.g., 1 Day, 2 Hours, 1 Week"
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-coordinator" className="text-foreground">
-                              Coordinator
-                            </Label>
-                            <Input
-                              id="edit-coordinator"
-                              name="coordinator"
-                              defaultValue={editingMission.coordinator || ""}
-                              placeholder="e.g., With Coordinator, Self-Guided"
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-support_status" className="text-foreground">
-                              Support Status
-                            </Label>
-                            <Input
-                              id="edit-support_status"
-                              name="support_status"
-                              defaultValue={editingMission.support_status || ""}
-                              placeholder="e.g., Supported, Independent, Team-Based"
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-type" className="text-foreground">
-                              Mission Type
-                            </Label>
-                            <Select
-                              key={`type-${editingMission.id}`}
-                              name="type"
-                              required
-                              defaultValue={editingMission.type || ""}
-                            >
-                              <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                                <SelectValue placeholder="Select mission type" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                                {missionTypes.map((type) => (
-                                  <SelectItem
-                                    key={type.value}
-                                    value={type.value}
-                                    className="text-foreground hover:bg-primary/20"
-                                  >
-                                    {type.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-resource_id" className="text-foreground">
-                              Linked Resource (Optional)
-                            </Label>
-                            <Select name="resource_id" defaultValue={editingMission.resource_id || ""}>
-                              <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                                <SelectValue placeholder="Select a resource (optional)" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                                <SelectItem value="none" className="text-foreground hover:bg-primary/20">
-                                  <span className="text-muted-foreground">None</span>
-                                </SelectItem>
-                                {resources.map((resource) => {
-                                  const typeConfig = resourceTypes.find((t) => t.value === resource.type)
-                                  return (
-                                    <SelectItem
-                                      key={resource.id}
-                                      value={resource.id}
-                                      className="text-foreground hover:bg-primary/20"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        {typeConfig && <typeConfig.icon className="h-4 w-4" />}
-                                        <span className="truncate max-w-[200px]">{resource.title}</span>
-                                      </div>
-                                    </SelectItem>
-                                  )
-                                })}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="edit-mission_number" className="text-foreground">
-                                Mission Number
-                              </Label>
-                              <Input
-                                id="edit-mission_number"
-                                name="mission_number"
-                                type="number"
-                                min="1"
-                                defaultValue={editingMission.mission_number?.toString() || ""}
-                                placeholder="e.g., 1, 2, 3..."
-                                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                              />
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Mission number for identification (optional)
-                              </p>
-                            </div>
-                            <div>
-                              <Label htmlFor="edit-display_order" className="text-foreground">
-                                Display Order
-                              </Label>
-                              <Input
-                                id="edit-display_order"
-                                name="display_order"
-                                type="number"
-                                min="0"
-                                defaultValue={editingMission.display_order?.toString() || "0"}
-                                placeholder="0"
-                                className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                              />
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Lower numbers appear first (0 = highest priority)
-                              </p>
-                            </div>
-                          </div>
-
-                          <div>
-                            <Label htmlFor="edit-instructions" className="text-foreground">
-                              Mission Instructions (Optional)
-                            </Label>
-                            <Textarea
-                              id="edit-instructions"
-                              name="instructions"
-                              defaultValue={editingMission.instructions || ""}
-                              placeholder="Enter step-by-step instructions for completing this mission..."
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                              rows={4}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="edit-tips_inspiration" className="text-foreground">
-                              {" "}
-                              {/* Updated label */}
-                              Tips & Inspiration (Optional)
-                            </Label>
-                            <Textarea
-                              id="edit-tips_inspiration" // Updated id
-                              name="tips_inspiration" // Updated name
-                              defaultValue={editingMission.tips_inspiration || ""}
-                              placeholder="Share helpful tips, inspiration, or examples to guide users..."
-                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                              rows={4}
-                            />
-                          </div>
-
-                          <div className="border-t border-white/20 dark:border-white/10 pt-6">
-                            <SchemaBuilder
-                              initialSchema={editingMission.submission_schema || null}
-                              onSchemaChange={setEditMissionSchema}
-                            />
-                          </div>
-
-                          <Button
-                            type="submit"
-                            disabled={isUpdatingMission}
-                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                          >
-                            {isUpdatingMission ? "Updating..." : "Update Mission"}
-                          </Button>
-                        </>
-                      )}
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              </div>
-              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/20 dark:from-black/20 to-transparent pointer-events-none"></div>
-            </div>
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+            <p className="text-muted-foreground">Manage missions, submissions, and resources.</p>
           </div>
-        </header>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setIsChatOpen(true)}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <MessageCircle className="h-4 w-4" />
+              AI Chat
+            </Button>
+            <Button 
+              onClick={handleExportExcel} 
+              variant="outline" 
+              className="flex items-center gap-2"
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4" />
+              )}
+              Export Excel
+            </Button>
+            <Button
+              onClick={handleExport}
+              variant="outline"
+              className="flex items-center gap-2"
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Export JSON
+            </Button>
+            <Link href="/">
+              <Button variant="outline" className="gap-2">
+                <Home className="h-4 w-4" />
+                View Site
+              </Button>
+            </Link>
+          </div>
+        </div>
 
-        <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10">
-          <CardContent className="p-3 sm:p-6">
-            <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-              <p className="text-sm text-foreground flex items-center gap-2">
-                <GripVertical className="h-4 w-4" />
-                <span>Drag and drop missions to reorder them. Changes are saved automatically.</span>
-              </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {dashboardItems.map((item) => (
+            <Link key={item.href} href={item.href}>
+              <Card className="hover:bg-accent cursor-pointer transition-colors h-full">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <item.icon className="h-5 w-5" />
+                    {item.title}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    {item.description}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+
+        {/* Programs Management Section */}
+        <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-foreground text-xl sm:text-2xl flex items-center gap-2">
+                <Layers className="h-6 w-6" />
+                Programs & Categories
+              </CardTitle>
+              <Dialog open={isAddProgramDialogOpen} onOpenChange={setIsAddProgramDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add Program
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="text-foreground">Add New Program</DialogTitle>
+                  </DialogHeader>
+                  <form action={handleCreateProgram} className="space-y-4">
+                    <div>
+                      <Label htmlFor="program-title" className="text-foreground">
+                        Title
+                      </Label>
+                      <Input
+                        id="program-title"
+                        name="title"
+                        required
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="program-description" className="text-foreground">
+                        Description
+                      </Label>
+                      <Textarea
+                        id="program-description"
+                        name="description"
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300"
+                    >
+                      Create Program
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </div>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-6">
             <div className="bg-white/5 dark:bg-black/10 backdrop-blur-lg rounded-lg overflow-hidden">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="border-b border-white/10 dark:border-white/5">
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base w-[40px]"></TableHead>
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[120px]">
+                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[150px]">
                         Title
                       </TableHead>
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[80px]">
-                        Mission #
-                      </TableHead>
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[80px]">
-                        Order
-                      </TableHead>
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[80px]">
-                        Type
-                      </TableHead>
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[120px]">
-                        Resource
-                      </TableHead>
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[80px]">
-                        Points
-                      </TableHead>
-                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[80px]">
-                        Schema
+                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[200px]">
+                        Description
                       </TableHead>
                       <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[100px]">
                         Actions
@@ -1325,352 +884,80 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {missions.map((mission, index) => {
-                      const linkedResource = resources.find((r) => r.id === mission.resource_id)
-                      const resourceTypeConfig = linkedResource
-                        ? resourceTypes.find((t) => t.value === linkedResource.type)
-                        : null
-
-                      return (
-                        <TableRow
-                          key={mission.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, mission, index)}
-                          onDragEnd={handleDragEnd}
-                          onDragOver={(e) => handleDragOver(e, index)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, mission, index)}
-                          className={`border-b border-white/5 dark:border-white/5 hover:bg-white/5 dark:hover:bg-black/10 transition-colors cursor-move ${
-                            dragOverIndex === index ? "border-t-2 border-t-blue-500" : ""
-                          }`}
-                        >
-                          <TableCell className="text-foreground">
-                            <GripVertical className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors cursor-grab active:cursor-grabbing" />
-                          </TableCell>
-                          <TableCell className="text-foreground font-medium text-sm sm:text-base max-w-[200px] truncate">
-                            {mission.title}
-                          </TableCell>
-                          <TableCell className="text-foreground text-sm sm:text-base">
-                            {mission.mission_number || "-"}
-                          </TableCell>
-                          <TableCell className="text-foreground text-sm sm:text-base">
-                            <span className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-md text-xs whitespace-nowrap">
-                              {mission.display_order || 0}
+                    {programs.map((program) => (
+                      <TableRow
+                        key={program.id}
+                        className="border-b border-white/5 dark:border-white/5 hover:bg-white/5 dark:hover:bg-black/10 transition-colors"
+                      >
+                        <TableCell className="text-foreground font-medium text-sm sm:text-base">
+                          {program.title}
+                          {program.is_default && (
+                            <span className="ml-2 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                              Default
                             </span>
-                          </TableCell>
-                          <TableCell className="text-foreground">
-                            <span className="capitalize bg-primary/20 text-primary px-2 py-1 rounded-md text-xs sm:text-sm whitespace-nowrap">
-                              {mission.type || "action"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-foreground">
-                            {linkedResource ? (
-                              <div className="flex items-center gap-2">
-                                {resourceTypeConfig && <resourceTypeConfig.icon className="h-4 w-4" />}
-                                <span
-                                  className="text-xs sm:text-sm truncate max-w-[100px]"
-                                  title={linkedResource.title}
+                          )}
+                        </TableCell>
+                        <TableCell className="text-foreground text-sm text-muted-foreground">
+                          {program.description}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 sm:gap-2">
+                            <Dialog
+                              open={isEditProgramDialogOpen && editingProgram?.id === program.id}
+                              onOpenChange={(open) => {
+                                setIsEditProgramDialogOpen(open)
+                                if (!open) setEditingProgram(null)
+                              }}
+                            >
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingProgram(program)}
+                                  className="h-8 w-8 sm:h-9 sm:w-9 p-0 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300"
                                 >
-                                  {linkedResource.title}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-xs sm:text-sm">No resource</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-foreground text-sm sm:text-base">{mission.points_value}</TableCell>
-                          <TableCell className="text-foreground">
-                            {mission.submission_schema && mission.submission_schema.fields?.length > 0 ? (
-                              <span className="bg-green-500/20 text-green-400 px-2 py-1 rounded-md text-xs whitespace-nowrap">
-                                Custom ({mission.submission_schema.fields.length} fields)
-                              </span>
-                            ) : (
-                              <span className="bg-gray-500/20 text-gray-400 px-2 py-1 rounded-md text-xs whitespace-nowrap">
-                                Default
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-1 sm:gap-2">
-                              <Dialog
-                                open={isEditDialogOpen && editingMission?.id === mission.id}
-                                onOpenChange={(open) => {
-                                  setIsEditDialogOpen(open)
-                                  if (!open) {
-                                    setEditingMission(null)
-                                    setEditMissionSchema(null)
-                                  }
-                                }}
-                              >
-                                <DialogTrigger asChild>
+                                  <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle className="text-foreground">Edit Program</DialogTitle>
+                                </DialogHeader>
+                                <form action={handleUpdateProgram} className="space-y-4">
+                                  <input type="hidden" name="id" value={program.id} />
+                                  <div>
+                                    <Label htmlFor="edit-program-title" className="text-foreground">
+                                      Title
+                                    </Label>
+                                    <Input
+                                      id="edit-program-title"
+                                      name="title"
+                                      defaultValue={program.title}
+                                      required
+                                      className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="edit-program-description" className="text-foreground">
+                                      Description
+                                    </Label>
+                                    <Textarea
+                                      id="edit-program-description"
+                                      name="description"
+                                      defaultValue={program.description || ""}
+                                      className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                    />
+                                  </div>
                                   <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                      setEditingMission(mission)
-                                      setEditMissionSchema(mission.submission_schema)
-                                    }}
-                                    className="h-8 w-8 sm:h-9 sm:w-9 p-0 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300"
+                                    type="submit"
+                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300"
                                   >
-                                    <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                                    Update Program
                                   </Button>
-                                </DialogTrigger>
-                                <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-                                  <DialogHeader>
-                                    <DialogTitle className="text-foreground">Edit Mission</DialogTitle>
-                                  </DialogHeader>
-                                  <form action={handleUpdateMission} className="space-y-4">
-                                    {editingMission && (
-                                      <>
-                                        <input type="hidden" name="id" value={editingMission.id} />
-                                        <div>
-                                          <Label htmlFor="edit-title" className="text-foreground">
-                                            Title
-                                          </Label>
-                                          <Input
-                                            id="edit-title"
-                                            name="title"
-                                            defaultValue={editingMission.title}
-                                            required
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-description" className="text-foreground">
-                                            Description
-                                          </Label>
-                                          <Textarea
-                                            id="edit-description"
-                                            name="description"
-                                            defaultValue={editingMission.description}
-                                            required
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                          <div>
-                                            <Label htmlFor="edit-mission_number" className="text-foreground">
-                                              Mission Number
-                                            </Label>
-                                            <Input
-                                              id="edit-mission_number"
-                                              name="mission_number"
-                                              type="number"
-                                              min="1"
-                                              defaultValue={editingMission.mission_number?.toString() || ""}
-                                              placeholder="e.g., 1, 2, 3..."
-                                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                            />
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                              Mission number for identification (optional)
-                                            </p>
-                                          </div>
-                                          <div>
-                                            <Label htmlFor="edit-display_order" className="text-foreground">
-                                              Display Order
-                                            </Label>
-                                            <Input
-                                              id="edit-display_order"
-                                              name="display_order"
-                                              type="number"
-                                              min="0"
-                                              defaultValue={editingMission.display_order?.toString() || "0"}
-                                              placeholder="0"
-                                              className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                            />
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                              Lower numbers appear first (0 = highest priority)
-                                            </p>
-                                          </div>
-                                        </div>
-
-                                        <div>
-                                          <Label htmlFor="edit-mission-image" className="text-foreground">
-                                            Mission Image (Optional)
-                                          </Label>
-                                          <Input
-                                            id="edit-mission-image"
-                                            name="mission_image"
-                                            type="file"
-                                            accept="image/*"
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3"
-                                          />
-                                          <p className="text-xs text-muted-foreground mt-1">
-                                            Upload an image to make the mission more engaging
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-duration" className="text-foreground">
-                                            Duration
-                                          </Label>
-                                          <Input
-                                            id="edit-duration"
-                                            name="duration"
-                                            defaultValue={editingMission.duration || ""}
-                                            placeholder="e.g., 1 Day, 2 Hours, 1 Week"
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-coordinator" className="text-foreground">
-                                            Coordinator
-                                          </Label>
-                                          <Input
-                                            id="edit-coordinator"
-                                            name="coordinator"
-                                            defaultValue={editingMission.coordinator || ""}
-                                            placeholder="e.g., With Coordinator, Self-Guided"
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-support_status" className="text-foreground">
-                                            Support Status
-                                          </Label>
-                                          <Input
-                                            id="edit-support_status"
-                                            name="support_status"
-                                            defaultValue={editingMission.support_status || ""}
-                                            placeholder="e.g., Supported, Independent, Team-Based"
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-type" className="text-foreground">
-                                            Mission Type
-                                          </Label>
-                                          <Select
-                                            key={`type-${editingMission.id}`}
-                                            name="type"
-                                            required
-                                            defaultValue={editingMission.type || ""}
-                                          >
-                                            <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                                              <SelectValue placeholder="Select mission type" />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                                              {missionTypes.map((type) => (
-                                                <SelectItem
-                                                  key={type.value}
-                                                  value={type.value}
-                                                  className="text-foreground hover:bg-primary/20"
-                                                >
-                                                  {type.label}
-                                                </SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-resource_id" className="text-foreground">
-                                            Linked Resource (Optional)
-                                          </Label>
-                                          <Select name="resource_id" defaultValue={editingMission.resource_id || ""}>
-                                            <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                                              <SelectValue placeholder="Select a resource (optional)" />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
-                                              <SelectItem value="none" className="text-foreground hover:bg-primary/20">
-                                                <span className="text-muted-foreground">None</span>
-                                              </SelectItem>
-                                              {resources.map((resource) => {
-                                                const typeConfig = resourceTypes.find((t) => t.value === resource.type)
-                                                return (
-                                                  <SelectItem
-                                                    key={resource.id}
-                                                    value={resource.id}
-                                                    className="text-foreground hover:bg-primary/20"
-                                                  >
-                                                    <div className="flex items-center gap-2">
-                                                      {typeConfig && <typeConfig.icon className="h-4 w-4" />}
-                                                      <span className="truncate max-w-[200px]">{resource.title}</span>
-                                                    </div>
-                                                  </SelectItem>
-                                                )
-                                              })}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-points_value" className="text-foreground">
-                                            Points Value <span className="text-red-500">*</span>
-                                          </Label>
-                                          <Input
-                                            id="edit-points_value"
-                                            name="points_value"
-                                            type="number"
-                                            defaultValue={editingMission.points_value.toString()}
-                                            required
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-max_submissions_per_user" className="text-foreground">
-                                            Max Submissions Per User
-                                          </Label>
-                                          <Input
-                                            id="edit-max_submissions_per_user"
-                                            name="max_submissions_per_user"
-                                            type="number"
-                                            defaultValue={editingMission.max_submissions_per_user?.toString() || "1"}
-                                            min="1"
-                                            max="10"
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                          />
-                                          <p className="text-xs text-muted-foreground mt-1">
-                                            How many times can each user submit this mission? (1-10)
-                                          </p>
-                                        </div>
-
-                                        <div>
-                                          <Label htmlFor="edit-instructions" className="text-foreground">
-                                            Mission Instructions (Optional)
-                                          </Label>
-                                          <Textarea
-                                            id="edit-instructions"
-                                            name="instructions"
-                                            defaultValue={editingMission.instructions || ""}
-                                            placeholder="Enter step-by-step instructions for completing this mission..."
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                            rows={4}
-                                          />
-                                        </div>
-                                        <div>
-                                          <Label htmlFor="edit-tips_inspiration" className="text-foreground">
-                                            {" "}
-                                            {/* Updated label */}
-                                            Tips & Inspiration (Optional)
-                                          </Label>
-                                          <Textarea
-                                            id="edit-tips_inspiration" // Updated id
-                                            name="tips_inspiration" // Updated name
-                                            defaultValue={editingMission.tips_inspiration || ""}
-                                            placeholder="Share helpful tips, inspiration, or examples to guide users..."
-                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
-                                            rows={4}
-                                          />
-                                        </div>
-
-                                        <div className="border-t border-white/20 dark:border-white/10 pt-6">
-                                          <SchemaBuilder
-                                            initialSchema={editingMission.submission_schema || null}
-                                            onSchemaChange={setEditMissionSchema}
-                                          />
-                                        </div>
-
-                                        <Button
-                                          type="submit"
-                                          disabled={isUpdatingMission}
-                                          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                                        >
-                                          {isUpdatingMission ? "Updating..." : "Update Mission"}
-                                        </Button>
-                                      </>
-                                    )}
-                                  </form>
-                                </DialogContent>
-                              </Dialog>
+                                </form>
+                              </DialogContent>
+                            </Dialog>
+                            {!program.is_default && (
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                   <Button
@@ -1683,17 +970,17 @@ export default function AdminPage() {
                                 </AlertDialogTrigger>
                                 <AlertDialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0">
                                   <AlertDialogHeader>
-                                    <AlertDialogTitle className="text-foreground">Delete Mission</AlertDialogTitle>
+                                    <AlertDialogTitle className="text-foreground">Delete Program</AlertDialogTitle>
                                     <AlertDialogDescription className="text-muted-foreground">
-                                      Are you sure you want to delete "{mission.title}"? This action cannot be undone.
+                                      Are you sure you want to delete "{program.title}"? Missions in this program will not be deleted.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-white/20 dark:hover:bg-black/30">
                                       Cancel
                                     </AlertDialogCancel>
-                                    <form action={handleDeleteMission}>
-                                      <input type="hidden" name="id" value={mission.id} />
+                                    <form action={handleDeleteProgram}>
+                                      <input type="hidden" name="id" value={program.id} />
                                       <AlertDialogAction
                                         type="submit"
                                         className="bg-red-500 hover:bg-red-600 text-white"
@@ -1704,11 +991,11 @@ export default function AdminPage() {
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>
@@ -1716,7 +1003,670 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-        {/* Resources Management Section */}
+
+        <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-foreground text-xl sm:text-2xl">Mission Management</CardTitle>
+              <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                setIsAddDialogOpen(open)
+                if (open) setSelectedProgramIds([]) // Reset on open
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add Mission
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="text-foreground">Add New Mission</DialogTitle>
+                  </DialogHeader>
+                  <form action={handleCreateMission} className="space-y-4">
+                    <div>
+                      <Label htmlFor="title" className="text-foreground">
+                        Title
+                      </Label>
+                      <Input
+                        id="title"
+                        name="title"
+                        required
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    
+                    {/* Add Programs Selection */}
+                    <div>
+                      <Label className="text-foreground mb-2 block">Programs / Categories</Label>
+                      <div className="bg-white/5 dark:bg-black/10 border border-white/10 rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                        {programs.map((program) => (
+                          <div key={program.id} className="flex items-center space-x-2">
+                            <Checkbox 
+                              id={`program-${program.id}`} 
+                              checked={selectedProgramIds.includes(program.id)}
+                              onCheckedChange={() => toggleProgramSelection(program.id)}
+                            />
+                            <label
+                              htmlFor={`program-${program.id}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {program.title}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Select which programs this mission belongs to.
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="description" className="text-foreground">
+                        Description
+                      </Label>
+                      <Textarea
+                        id="description"
+                        name="description"
+                        required
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="instructions" className="text-foreground">
+                        Mission Instructions (Optional)
+                      </Label>
+                      <Textarea
+                        id="instructions"
+                        name="instructions"
+                        placeholder="Enter step-by-step instructions for completing this mission..."
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                        rows={4}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="tips_inspiration" className="text-foreground">
+                        Tips & Inspiration (Optional)
+                      </Label>
+                      <Textarea
+                        id="tips_inspiration"
+                        name="tips_inspiration"
+                        placeholder="Share helpful tips, inspiration, or examples to guide users..."
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                        rows={4}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="mission-image" className="text-foreground">
+                        Mission Image (Optional)
+                      </Label>
+                      <Input
+                        id="mission-image"
+                        name="mission_image"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange} // Added validation
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Upload an image to make the mission more engaging (max 4MB)
+                      </p>
+                    </div>
+                    <div>
+                      <Label htmlFor="duration" className="text-foreground">
+                        Duration
+                      </Label>
+                      <Input
+                        id="duration"
+                        name="duration"
+                        placeholder="e.g., 1 Day, 2 Hours, 1 Week"
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="coordinator" className="text-foreground">
+                        Coordinator
+                      </Label>
+                      <Input
+                        id="coordinator"
+                        name="coordinator"
+                        placeholder="e.g., With Coordinator, Self-Guided"
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="support_status" className="text-foreground">
+                        Support Status
+                      </Label>
+                      <Input
+                        id="support_status"
+                        name="support_status"
+                        placeholder="e.g., Supported, Independent, Team-Based"
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="type" className="text-foreground">
+                        Mission Type
+                      </Label>
+                      <Select name="type" required onValueChange={(value) => setSelectedMissionType(value)}>
+                        <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
+                          <SelectValue placeholder="Select mission type" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
+                          {missionTypes.map((type) => (
+                            <SelectItem
+                              key={type.value}
+                              value={type.value}
+                              className="text-foreground hover:bg-primary/20"
+                            >
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="resource_id" className="text-foreground">
+                        Linked Resource (Optional)
+                      </Label>
+                      <Select name="resource_id">
+                        <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
+                          <SelectValue placeholder="Select a resource (optional)" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
+                          <SelectItem value="none" className="text-foreground hover:bg-primary/20">
+                            <span className="text-muted-foreground">None</span>
+                          </SelectItem>
+                          {resources.map((resource) => {
+                            const typeConfig = resourceTypes.find((t) => t.value === resource.type)
+                            return (
+                              <SelectItem
+                                key={resource.id}
+                                value={resource.id}
+                                className="text-foreground hover:bg-primary/20"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {typeConfig && <typeConfig.icon className="h-4 w-4" />}
+                                  <span className="truncate max-w-[200px]">{resource.title}</span>
+                                </div>
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="mission_number" className="text-foreground">
+                          Mission Number
+                        </Label>
+                        <Input
+                          id="mission_number"
+                          name="mission_number"
+                          type="number"
+                          min="1"
+                          value={autoMissionNumber}
+                          readOnly
+                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Auto-generated based on mission type</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="points_value" className="text-foreground">
+                          Points Value <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="points_value"
+                          name="points_value"
+                          type="number"
+                          min="1"
+                          max="1000"
+                          required
+                          placeholder="e.g., 10, 25, 50..."
+                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Points awarded when mission is completed (required)
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="display_order" className="text-foreground">
+                        Display Order
+                      </Label>
+                      <Input
+                        id="display_order"
+                        name="display_order"
+                        type="number"
+                        min="0"
+                        defaultValue="0"
+                        placeholder="0"
+                        className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Lower numbers appear first (0 = highest priority)
+                      </p>
+                    </div>
+
+                    <div className="border-t border-white/20 dark:border-white/10 pt-6">
+                      <SchemaBuilder initialSchema={null} onSchemaChange={setCreateMissionSchema} />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={isCreatingMission}
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    >
+                      {isCreatingMission ? "Creating..." : "Create Mission"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-6">
+            <div className="bg-white/5 dark:bg-black/10 backdrop-blur-lg rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b border-white/10 dark:border-white/5">
+                      <TableHead className="text-foreground font-semibold text-sm sm:text-base w-8"></TableHead>
+                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[150px]">
+                        Title
+                      </TableHead>
+                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[80px]">
+                        Type
+                      </TableHead>
+                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[80px]">
+                        Points
+                      </TableHead>
+                      <TableHead className="text-foreground font-semibold text-sm sm:text-base min-w-[100px]">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {missions.map((mission, index) => (
+                      <TableRow
+                        key={mission.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, mission, index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragEnd={handleDragEnd}
+                        className={`border-b border-white/5 dark:border-white/5 hover:bg-white/5 dark:hover:bg-black/10 transition-colors cursor-move ${
+                          dragOverIndex === index ? "bg-primary/10" : ""
+                        }`}
+                      >
+                        <TableCell>
+                          <GripVertical className="h-4 w-4 text-muted-foreground" />
+                        </TableCell>
+                        <TableCell className="text-foreground font-medium text-sm sm:text-base">
+                          {mission.title}
+                        </TableCell>
+                        <TableCell className="text-foreground text-xs sm:text-sm">
+                          {mission.type || "N/A"}
+                        </TableCell>
+                        <TableCell className="text-foreground text-xs sm:text-sm">
+                          {mission.points_value}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 sm:gap-2">
+                            <Dialog
+                              open={isEditDialogOpen && editingMission?.id === mission.id}
+                              onOpenChange={(open) => {
+                                setIsEditDialogOpen(open)
+                                if (!open) {
+                                  setEditingMission(null)
+                                  setEditMissionSchema(null)
+                                }
+                              }}
+                            >
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openEditMissionDialog(mission)}
+                                  className="h-8 w-8 sm:h-9 sm:w-9 p-0 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-primary hover:text-white hover:scale-105 transition-all duration-300"
+                                >
+                                  <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                                <DialogHeader>
+                                  <DialogTitle className="text-foreground">Edit Mission</DialogTitle>
+                                </DialogHeader>
+                                <form id="edit-mission-form" action={handleUpdateMission} className="space-y-4">
+                                  {editingMission && (
+                                    <>
+                                      <input type="hidden" name="id" value={editingMission.id} />
+                                      <div>
+                                        <Label htmlFor="edit-title" className="text-foreground">
+                                          Title
+                                        </Label>
+                                        <Input
+                                          id="edit-title"
+                                          name="title"
+                                          defaultValue={editingMission.title}
+                                          required
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                        />
+                                      </div>
+                                      
+                                      {/* Edit Programs Selection */}
+                                      <div>
+                                        <Label className="text-foreground mb-2 block">Programs / Categories</Label>
+                                        <div className="bg-white/5 dark:bg-black/10 border border-white/10 rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                                          {programs.map((program) => (
+                                            <div key={program.id} className="flex items-center space-x-2">
+                                              <Checkbox 
+                                                id={`edit-program-${program.id}`} 
+                                                checked={selectedProgramIds.includes(program.id)}
+                                                onCheckedChange={() => toggleProgramSelection(program.id)}
+                                              />
+                                              <label
+                                                htmlFor={`edit-program-${program.id}`}
+                                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                              >
+                                                {program.title}
+                                              </label>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <Label htmlFor="edit-description" className="text-foreground">
+                                          Description
+                                        </Label>
+                                        <Textarea
+                                          id="edit-description"
+                                          name="description"
+                                          defaultValue={editingMission.description}
+                                          required
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-instructions" className="text-foreground">
+                                          Mission Instructions (Optional)
+                                        </Label>
+                                        <Textarea
+                                          id="edit-instructions"
+                                          name="instructions"
+                                          defaultValue={editingMission.instructions || ""}
+                                          placeholder="Enter step-by-step instructions for completing this mission..."
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                          rows={4}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-tips_inspiration" className="text-foreground">
+                                          Tips & Inspiration (Optional)
+                                        </Label>
+                                        <Textarea
+                                          id="edit-tips_inspiration"
+                                          name="tips_inspiration"
+                                          defaultValue={editingMission.tips_inspiration || ""}
+                                          placeholder="Share helpful tips, inspiration, or examples to guide users..."
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                          rows={4}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-mission-image" className="text-foreground">
+                                          Mission Image (Optional)
+                                        </Label>
+                                        <Input
+                                          id="edit-mission-image"
+                                          name="mission_image"
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={handleFileChange} // Added validation
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3"
+                                        />
+                                        {editingMission.image_url && (
+                                          <div className="mt-2 relative group">
+                                            <p className="text-xs text-muted-foreground mb-1">Current Image:</p>
+                                            <div className="relative">
+                                              <img
+                                                src={editingMission.image_url || "/placeholder.svg"}
+                                                alt="Current mission image"
+                                                className="w-full max-w-[200px] h-auto rounded-md border border-white/10"
+                                              />
+                                              <Button
+                                                type="button"
+                                                variant="destructive"
+                                                size="icon"
+                                                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => {
+                                                  // Add a hidden input to signal image deletion
+                                                  const form = document.getElementById("edit-mission-form") as HTMLFormElement
+                                                  if (form) {
+                                                    const input = document.createElement("input")
+                                                    input.type = "hidden"
+                                                    input.name = "delete_image"
+                                                    input.value = "true"
+                                                    form.appendChild(input)
+                                                    
+                                                    // Update local state to hide image immediately
+                                                    setEditingMission({
+                                                      ...editingMission,
+                                                      image_url: null
+                                                    })
+                                                  }
+                                                }}
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                              </Button>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              Upload a new image to replace, or click trash icon to remove
+                                            </p>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-duration" className="text-foreground">
+                                          Duration
+                                        </Label>
+                                        <Input
+                                          id="edit-duration"
+                                          name="duration"
+                                          defaultValue={editingMission.duration || ""}
+                                          placeholder="e.g., 1 Day, 2 Hours, 1 Week"
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-coordinator" className="text-foreground">
+                                          Coordinator
+                                        </Label>
+                                        <Input
+                                          id="edit-coordinator"
+                                          name="coordinator"
+                                          defaultValue={editingMission.coordinator || ""}
+                                          placeholder="e.g., With Coordinator, Self-Guided"
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-support_status" className="text-foreground">
+                                          Support Status
+                                        </Label>
+                                        <Input
+                                          id="edit-support_status"
+                                          name="support_status"
+                                          defaultValue={editingMission.support_status || ""}
+                                          placeholder="e.g., Supported, Independent, Team-Based"
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-type" className="text-foreground">
+                                          Mission Type
+                                        </Label>
+                                        <Select name="type" defaultValue={editingMission.type}>
+                                          <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
+                                            <SelectValue placeholder="Select mission type" />
+                                          </SelectTrigger>
+                                          <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
+                                            {missionTypes.map((type) => (
+                                              <SelectItem
+                                                key={type.value}
+                                                value={type.value}
+                                                className="text-foreground hover:bg-primary/20"
+                                              >
+                                                {type.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-resource_id" className="text-foreground">
+                                          Linked Resource (Optional)
+                                        </Label>
+                                        <Select name="resource_id" defaultValue={editingMission.resource_id || "none"}>
+                                          <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
+                                            <SelectValue placeholder="Select a resource (optional)" />
+                                          </SelectTrigger>
+                                          <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
+                                            <SelectItem value="none" className="text-foreground hover:bg-primary/20">
+                                              <span className="text-muted-foreground">None</span>
+                                            </SelectItem>
+                                            {resources.map((resource) => {
+                                              const typeConfig = resourceTypes.find((t) => t.value === resource.type)
+                                              return (
+                                                <SelectItem
+                                                  key={resource.id}
+                                                  value={resource.id}
+                                                  className="text-foreground hover:bg-primary/20"
+                                                >
+                                                  <div className="flex items-center gap-2">
+                                                    {typeConfig && <typeConfig.icon className="h-4 w-4" />}
+                                                    <span className="truncate max-w-[200px]">{resource.title}</span>
+                                                  </div>
+                                                </SelectItem>
+                                              )
+                                            })}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                          <Label htmlFor="edit-mission_number" className="text-foreground">
+                                            Mission Number
+                                          </Label>
+                                          <Input
+                                            id="edit-mission_number"
+                                            name="mission_number"
+                                            type="number"
+                                            min="1"
+                                            defaultValue={editingMission.mission_number?.toString() || ""}
+                                            placeholder="e.g., 1, 2, 3..."
+                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                          />
+                                          <p className="text-xs text-muted-foreground mt-1">
+                                            Mission number for identification (optional)
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <Label htmlFor="edit-points_value" className="text-foreground">
+                                            Points Value
+                                          </Label>
+                                          <Input
+                                            id="edit-points_value"
+                                            name="points_value"
+                                            type="number"
+                                            min="1"
+                                            max="1000"
+                                            defaultValue={editingMission.points_value}
+                                            required
+                                            className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="edit-display_order" className="text-foreground">
+                                          Display Order
+                                        </Label>
+                                        <Input
+                                          id="edit-display_order"
+                                          name="display_order"
+                                          type="number"
+                                          min="0"
+                                          defaultValue={editingMission.display_order?.toString() || "0"}
+                                          placeholder="0"
+                                          className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
+                                        />
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          Lower numbers appear first (0 = highest priority)
+                                        </p>
+                                      </div>
+
+                                      <div className="border-t border-white/20 dark:border-white/10 pt-6">
+                                        <SchemaBuilder
+                                          initialSchema={editingMission.submission_schema || null}
+                                          onSchemaChange={setEditMissionSchema}
+                                        />
+                                      </div>
+
+                                      <Button
+                                        type="submit"
+                                        disabled={isUpdatingMission}
+                                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                                      >
+                                        {isUpdatingMission ? "Updating..." : "Update Mission"}
+                                      </Button>
+                                    </>
+                                  )}
+                                </form>
+                              </DialogContent>
+                            </Dialog>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 w-8 sm:h-9 sm:w-9 p-0 bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-red-400 hover:text-red-300 hover:bg-red-500/10 hover:scale-105 transition-all duration-300"
+                                >
+                                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="text-foreground">Delete Mission</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-muted-foreground">
+                                    Are you sure you want to delete "{mission.title}"? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground hover:bg-white/20 dark:hover:bg-black/30">
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <form action={handleDeleteMission}>
+                                    <input type="hidden" name="id" value={mission.id} />
+                                    <AlertDialogAction
+                                      type="submit"
+                                      className="bg-red-500 hover:bg-red-600 text-white"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </form>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -1990,7 +1940,6 @@ export default function AdminPage() {
         </Card>
       </div>
 
-      {/* AI Chat Dialog */}
       <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
         <DialogContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl mx-2 sm:mx-0 max-w-[95vw] sm:max-w-2xl max-h-[90vh] sm:max-h-[80vh] flex flex-col rounded-lg z-50">
           <DialogHeader className="border-b border-slate-200 dark:border-slate-700 pb-4">
@@ -2001,7 +1950,7 @@ export default function AdminPage() {
               Everyone Journal Assistant
             </DialogTitle>
             <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-              for enterprise - grade platform analytics and insights
+              for enterprise-grade platform analytics and insights
             </p>
           </DialogHeader>
 
@@ -2010,7 +1959,7 @@ export default function AdminPage() {
               {chatMessages.length === 0 ? (
                 <div className="text-center text-slate-600 dark:text-slate-400 py-6 sm:py-8">
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl mb-4 inline-block">
-                    <MessageCircle className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-blue-500 dark:text-blue-400 opacity-60" />
+                    <MessageCircle className="h-10 w-10 sm:h-12 sm:w-10 mx-auto text-blue-500 dark:text-blue-400 opacity-60" />
                   </div>
                   <p className="font-medium text-base sm:text-lg mb-2">Welcome to your Corporate Admin Assistant</p>
                   <p className="text-sm sm:text-base mb-3">

@@ -5,13 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Trophy, UserPlus, FileText, Heart, Clock, Users, TrendingUp } from "lucide-react"
+import { Trophy, UserPlus, FileText, Heart, Clock, Users, TrendingUp } from 'lucide-react'
 import Link from "next/link"
 import { revalidatePath } from "next/cache"
 import { Navbar } from "@/components/navbar"
 import { LikeButton } from "@/components/like-button"
 import { ImageViewer } from "@/components/image-viewer"
 import { getAvatarColor } from "@/lib/utils"
+import { MediaCarousel } from "@/components/media-carousel"
 
 interface ActivityItem {
   id: string
@@ -521,86 +522,126 @@ function LikesDisplay({
 }
 
 function ActivityDescription({ activity }: { activity: ActivityItem }) {
+  const mediaUrls: string[] = (() => {
+    if (!activity.media_url) return []
+    try {
+      return typeof activity.media_url === 'string'
+        ? JSON.parse(activity.media_url)
+        : Array.isArray(activity.media_url)
+          ? activity.media_url
+          : []
+    } catch {
+      return activity.media_url ? [activity.media_url] : []
+    }
+  })()
+
   switch (activity.type) {
     case "mission_completed":
     case "mission_submitted":
       return (
-        <div className="flex-1 space-y-2">
-          <p className="text-sm">
-            {activity.user_id ? (
-              <Link
-                href={`/user/${activity.user_id}`}
-                className="font-medium hover:text-primary hover:underline transition-colors"
-              >
-                {activity.user_name}
-              </Link>
-            ) : (
-              <span className="font-medium">{activity.user_name}</span>
-            )}{" "}
-            {activity.type === "mission_completed" ? "completed" : "submitted"}{" "}
-            {activity.mission_id ? (
-              <Link href={`/mission/${activity.mission_id}`} className="text-primary hover:underline font-medium">
-                {activity.mission_type && activity.mission_number && (
-                  <>
-                    {activity.mission_type} #{Math.floor(activity.mission_number)} |{" "}
-                  </>
-                )}
-                {activity.mission_title}
-                {activity.mission_points_value && <> | +{activity.mission_points_value} EP</>}
-              </Link>
-            ) : (
-              <span className="font-medium text-primary">
-                {activity.mission_type && activity.mission_number && (
-                  <>
-                    {activity.mission_type} #{Math.floor(activity.mission_number)} |{" "}
-                  </>
-                )}
-                {activity.mission_title}
-                {activity.mission_points_value && <> | +{activity.mission_points_value} EP</>}
+        <div className="flex-1 space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm leading-relaxed">
+              {activity.user_id ? (
+                <Link
+                  href={`/user/${activity.user_id}`}
+                  className="font-semibold hover:text-primary hover:underline transition-colors"
+                >
+                  {activity.user_name}
+                </Link>
+              ) : (
+                <span className="font-semibold">{activity.user_name}</span>
+              )}{" "}
+              <span className="text-muted-foreground">
+                {activity.type === "mission_completed" ? "completed" : "submitted"}
               </span>
+            </p>
+            
+            {activity.mission_id ? (
+              <Link 
+                href={`/mission/${activity.mission_id}`} 
+                className="inline-block group"
+              >
+                <div className="bg-primary/5 hover:bg-primary/10 rounded-lg px-3 py-2 transition-colors border border-primary/20">
+                  <p className="text-sm font-medium text-primary group-hover:underline">
+                    {activity.mission_type && activity.mission_number && (
+                      <span className="text-xs opacity-80">
+                        {activity.mission_type} #{Math.floor(activity.mission_number)} •{" "}
+                      </span>
+                    )}
+                    {activity.mission_title}
+                    {activity.mission_points_value && (
+                      <span className="ml-2 text-xs font-bold text-accent">
+                        +{activity.mission_points_value} EP
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </Link>
+            ) : (
+              <div className="bg-primary/5 rounded-lg px-3 py-2 border border-primary/20">
+                <p className="text-sm font-medium text-primary">
+                  {activity.mission_type && activity.mission_number && (
+                    <span className="text-xs opacity-80">
+                      {activity.mission_type} #{Math.floor(activity.mission_number)} •{" "}
+                    </span>
+                  )}
+                  {activity.mission_title}
+                  {activity.mission_points_value && (
+                    <span className="ml-2 text-xs font-bold text-accent">
+                      +{activity.mission_points_value} EP
+                    </span>
+                  )}
+                </p>
+              </div>
             )}
-          </p>
+          </div>
 
           {activity.answers && activity.submission_schema ? (
-            <AnswersDisplay answers={activity.answers} submissionSchema={activity.submission_schema} />
+            <div className="pt-2">
+              <AnswersDisplay answers={activity.answers} submissionSchema={activity.submission_schema} />
+            </div>
           ) : activity.text_submission ? (
-            <div className="bg-muted/50 rounded-lg p-3 text-sm">
-              <p className="line-clamp-3">{activity.text_submission}</p>
+            <div className="bg-muted/30 rounded-lg p-4 border border-muted/50">
+              <p className="text-sm leading-relaxed line-clamp-4 text-foreground/90">
+                {activity.text_submission}
+              </p>
             </div>
           ) : null}
 
-          {activity.media_url && (
-            <div className="rounded-lg overflow-hidden max-w-sm">
-              {activity.media_url.includes(".mp4") || activity.media_url.includes(".mov") ? (
-                <video
-                  src={activity.media_url}
-                  controls
-                  className="w-full h-auto max-h-48 object-cover"
-                  preload="metadata"
-                />
-              ) : (
-                <ImageViewer
-                  src={activity.media_url || "/placeholder.svg"}
-                  alt="Submission media"
-                  className="w-full h-auto max-h-48 object-cover"
-                />
-              )}
+          {mediaUrls.length > 0 && (
+            <div className="rounded-xl overflow-hidden border border-muted/30 bg-muted/5">
+              <MediaCarousel 
+                mediaUrls={mediaUrls} 
+                className="w-full max-w-md mx-auto"
+                showControls={true}
+              />
             </div>
           )}
 
-          <div className="flex items-center gap-4">
-            {activity.points && activity.type === "mission_completed" && (
-              <Badge variant="secondary">+{activity.points} EP</Badge>
-            )}
-            {activity.type === "mission_submitted" && <Badge variant="outline">Pending Review</Badge>}
+          <div className="flex items-center justify-between gap-4 pt-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {activity.points && activity.type === "mission_completed" && (
+                <Badge variant="secondary" className="font-semibold">
+                  +{activity.points} EP
+                </Badge>
+              )}
+              {activity.type === "mission_submitted" && (
+                <Badge variant="outline" className="text-xs">
+                  Pending Review
+                </Badge>
+              )}
+            </div>
 
             {activity.submission_id && (
-              <LikeButton
-                submissionId={activity.submission_id}
-                likesCount={activity.likes_count || 0}
-                userHasLiked={activity.user_has_liked || false}
-                onToggleLike={toggleLike}
-              />
+              <div className="flex-shrink-0">
+                <LikeButton
+                  submissionId={activity.submission_id}
+                  likesCount={activity.likes_count || 0}
+                  userHasLiked={activity.user_has_liked || false}
+                  onToggleLike={toggleLike}
+                />
+              </div>
             )}
           </div>
 
@@ -608,7 +649,9 @@ function ActivityDescription({ activity }: { activity: ActivityItem }) {
             activity.likes_users.length > 0 &&
             activity.likes_count &&
             activity.likes_count > 0 && (
-              <LikesDisplay likesUsers={activity.likes_users} likesCount={activity.likes_count} />
+              <div className="pt-1 border-t border-muted/30">
+                <LikesDisplay likesUsers={activity.likes_users} likesCount={activity.likes_count} />
+              </div>
             )}
         </div>
       )

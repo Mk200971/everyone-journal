@@ -1,7 +1,7 @@
-import { Target } from "lucide-react"
+import { Target } from 'lucide-react'
 import { Navbar } from "@/components/navbar"
 import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { redirect } from 'next/navigation'
 import { MissionsPageClient } from "@/components/missions-page-client"
 
 interface Mission {
@@ -16,6 +16,8 @@ interface Mission {
   support_status?: string
   due_date?: string
   mission_number?: number
+  display_order?: number
+  created_at?: string
   resources?: Resource[]
 }
 
@@ -39,7 +41,14 @@ async function getMissionsData() {
     redirect("/auth/login")
   }
 
-  const { data: missions, error } = await supabase
+  // Get user profile to check role
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  let query = supabase
     .from("missions")
     .select(
       `
@@ -54,6 +63,8 @@ async function getMissionsData() {
       support_status,
       due_date,
       mission_number,
+      display_order,
+      created_at,
       resources (
         id,
         title,
@@ -63,6 +74,24 @@ async function getMissionsData() {
       )
     `,
     )
+
+  // If not admin, filter by assignments
+  if (profile?.role !== "admin") {
+    const { data: assignments } = await supabase
+      .from("mission_assignments")
+      .select("mission_id")
+      .eq("user_id", user.id)
+
+    const assignedMissionIds = assignments?.map((a) => a.mission_id) || []
+    
+    if (assignedMissionIds.length === 0) {
+      return []
+    }
+
+    query = query.in("id", assignedMissionIds)
+  }
+
+  const { data: missions, error } = await query
     .order("display_order", { ascending: true, nullsLast: true })
     .order("created_at", { ascending: true })
 

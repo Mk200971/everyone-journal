@@ -20,6 +20,7 @@ export interface Profile {
   total_points: number
   is_admin: boolean
   is_deleted: boolean
+  role: UserRole
   created_at: string
   updated_at: string
 }
@@ -31,6 +32,7 @@ export interface Mission {
   instructions: string | null
   tips_inspiration: string | null
   type: string
+  mission_type_id: string | null
   points_value: number
   image_url: string | null
   resource_id: string | null
@@ -47,14 +49,28 @@ export interface Mission {
   updated_at: string
 }
 
-export type MissionType = "Action" | "Core" | "Lite" | "Elevate"
+export interface MissionTypeEntity {
+  id: string
+  name: string
+  description: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MissionAssignment {
+  id: string
+  mission_id: string
+  user_id: string
+  assigned_by: string | null
+  created_at: string
+}
 
 export interface Submission {
   id: string
   user_id: string
   mission_id: string
   text_submission: string | null
-  media_url: string | null
+  media_url: string | string[] | null // Supports TEXT (string), JSONB array, or null
   answers: Record<string, JsonValue> | null
   status: SubmissionStatus
   points_awarded: number
@@ -217,3 +233,7 @@ export type DeepPartial<T> = {
 export type Nullable<T> = T | null
 
 export type Optional<T> = T | undefined
+
+export type UserRole = "admin" | "participant" | "view_only"
+
+export type MissionCategory = "Action" | "Core" | "Lite" | "Elevate"

@@ -11,18 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import {
-  Upload,
-  FileText,
-  ExternalLink,
-  ArrowLeft,
-  CheckCircle,
-  Plus,
-  Trash2,
-  Save,
-  Loader2,
-  AlertCircle,
-} from "lucide-react"
+import { Upload, FileText, ExternalLink, ArrowLeft, CheckCircle, Plus, Trash2, Save, Loader2, AlertCircle } from 'lucide-react'
 import {
   submitMission,
   saveDraft,
@@ -32,9 +21,10 @@ import {
   createNewSubmission,
 } from "@/lib/actions"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import { DynamicFormRenderer } from "@/components/dynamic-form-renderer"
 import type { JsonValue } from "type-fest" // Import JsonValue
+import { parseMediaUrls } from "@/lib/media-utils"
 
 interface SubmissionSchema {
   fields?: Array<{
@@ -71,7 +61,7 @@ interface Mission {
 interface Submission {
   id: string
   text_submission: string
-  media_url?: string
+  media_url?: string | string[] // Allow string or array of strings
   status: string
   created_at: string
   answers?: Record<string, JsonValue> | null
@@ -105,6 +95,30 @@ interface MissionClientProps {
   user: User
   profile: Profile
 }
+
+// The parseMediaUrls function is now imported from "@/lib/media-utils", so this duplicate definition is removed.
+// const parseMediaUrls = (mediaUrl: string | string[] | undefined | null): string[] => {
+//   if (!mediaUrl) return [];
+
+//   if (typeof mediaUrl === 'string') {
+//     try {
+//       const parsed = JSON.parse(mediaUrl);
+//       return Array.isArray(parsed) ? parsed : [mediaUrl];
+//     } catch {
+//       // If parsing fails, treat as single URL
+//       return [mediaUrl];
+//     }
+//   }
+
+//   // Already an array
+//   if (Array.isArray(mediaUrl)) {
+//     return mediaUrl;
+//   }
+
+//   // Should not happen with the given type, but as a fallback
+//   return [mediaUrl];
+// };
+
 
 export function MissionClient({
   mission,
@@ -143,6 +157,8 @@ export function MissionClient({
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [isProcessing, setIsProcessing] = useState(false)
+  // </CHANGE>
 
   const handleSaveProgress = async (
     answers?: Record<string, JsonValue>,
@@ -175,7 +191,9 @@ export function MissionClient({
         if (useDynamicForm && answers) {
           formData.append("answers", JSON.stringify(answers))
           if (mediaFiles && mediaFiles.length > 0) {
-            formData.append("mediaFile", mediaFiles[0])
+            mediaFiles.forEach((file, index) => {
+              formData.append(`mediaFile${index}`, file)
+            })
           }
         } else {
           const form = submissionForms[0]
@@ -234,18 +252,44 @@ export function MissionClient({
         formData.append("answers", JSON.stringify(answers))
 
         if (mediaFiles.length > 0) {
-          formData.append("mediaFile", mediaFiles[0])
+          mediaFiles.forEach((file, index) => {
+            formData.append(`mediaFile${index}`, file)
+            console.log(`[v0] Uploading file ${index + 1}/${mediaFiles.length}:`, {
+              name: file.name,
+              size: file.size,
+              type: file.type
+            })
+          })
         }
 
         if (draftSubmissions.length > 0) {
           formData.append("draftId", draftSubmissions[0].id)
-          await submitDraftAsFinal(formData)
+          const result = await submitDraftAsFinal(formData)
+
+          if (!result.success) {
+            toast({
+              title: "❌ Submission Failed",
+              description: result.error || "Unable to submit your mission.",
+              variant: "destructive",
+            })
+            return
+          }
         } else {
-          await createNewSubmission(formData)
+          const result = await createNewSubmission(formData)
+
+          if (!result.success) {
+            toast({
+              title: "❌ Submission Failed",
+              description: result.error || "Unable to submit your mission.",
+              variant: "destructive",
+            })
+            return
+          }
         }
 
         setShowSuccessModal(true)
       } catch (error) {
+        console.error("[v0] Submission error:", error)
         toast({
           title: "❌ Submission Failed",
           description: "Unable to submit your mission. Please check your connection and try again.",
@@ -563,7 +607,7 @@ export function MissionClient({
     mediaFiles: File[],
     removedMediaUrls?: string[],
   ) => {
-    if (isEditingSubmission) {
+    if (isEditingSubmission || isProcessing) {
       toast({
         title: "⏳ Update in Progress",
         description: "Please wait while we save your changes.",
@@ -571,6 +615,10 @@ export function MissionClient({
       })
       return
     }
+
+    // Set local processing state immediately to prevent rapid clicks
+    setIsProcessing(true)
+    // </CHANGE>
 
     startEditTransition(async () => {
       try {
@@ -585,32 +633,56 @@ export function MissionClient({
 
         if (removedMediaUrls && removedMediaUrls.length > 0) {
           formData.append("removedMediaUrls", JSON.stringify(removedMediaUrls))
+          console.log("[v0] handleDynamicEdit - removedMediaUrls (JSON):", JSON.stringify(removedMediaUrls))
         }
+        // </CHANGE>
 
         if (mediaFiles.length > 0) {
-          formData.append("mediaFile", mediaFiles[0])
+          mediaFiles.forEach((file, index) => {
+            formData.append(`mediaFile${index}`, file)
+            console.log(`[v0] handleDynamicEdit - mediaFile${index}:`, { name: file.name, size: file.size, type: file.type })
+          })
         }
+        // </CHANGE>
 
         const result = await updateSubmission(formData)
 
-        setEditingSubmission(null)
-        setEditDynamicAnswers(null)
+        if (result.success) {
+          setEditingSubmission(null)
+          setEditDynamicAnswers(null)
 
-        if (result.success && result.data?.wasApproved) {
-          toast({
-            title: "✓ Submission Updated",
-            description: "Your submission has been updated and is now pending review again.",
-          })
+          if (result.data?.wasApproved) {
+            toast({
+              title: "✓ Submission Updated",
+              description: "Your submission has been updated and is now pending review again.",
+            })
+          } else {
+            toast({
+              title: "✓ Submission Updated",
+              description: "Your changes have been saved successfully.",
+            })
+          }
+
+          router.refresh()
+          
+          // Wait for refresh to complete before allowing new submissions
+          setTimeout(() => {
+            setIsProcessing(false)
+          }, 1000)
+          // </CHANGE>
         } else {
+          setIsProcessing(false)
+          // </CHANGE>
           toast({
-            title: "✓ Submission Updated",
-            description: "Your changes have been saved successfully.",
+            title: "❌ Update Failed",
+            description: result.error || "Unable to save your changes. Please try again.",
+            variant: "destructive",
           })
         }
-
-        // Refresh the page to get updated data
-        router.refresh()
       } catch (error) {
+        console.error("[v0] handleDynamicEdit error:", error)
+        setIsProcessing(false)
+        // </CHANGE>
         toast({
           title: "❌ Update Failed",
           description: "Unable to save your changes. Please check your connection and try again.",
@@ -677,10 +749,18 @@ export function MissionClient({
 
   const initialMediaUrls = useMemo(() => {
     if (draftSubmissions.length > 0 && draftSubmissions[0].media_url) {
-      return [draftSubmissions[0].media_url]
+      return parseMediaUrls(draftSubmissions[0].media_url)
     }
+    
+    if (editingSubmission && existingSubmissions.length > 0) {
+      const submission = existingSubmissions.find(s => s.id === editingSubmission)
+      if (submission?.media_url) {
+        return parseMediaUrls(submission.media_url)
+      }
+    }
+    
     return []
-  }, [draftSubmissions])
+  }, [draftSubmissions, editingSubmission, existingSubmissions])
 
   return (
     <>
@@ -964,11 +1044,13 @@ export function MissionClient({
                             <DynamicFormRenderer
                               schema={missionSchema}
                               initialAnswers={editDynamicAnswers}
-                              initialMediaUrls={submission.media_url ? [submission.media_url] : []}
+                              initialMediaUrls={(() => {
+                                return parseMediaUrls(submission.media_url)
+                              })()}
                               onSubmit={handleDynamicEdit}
                               submitButtonText="Save Changes"
                               isSubmitting={isEditingSubmission}
-                              onSubmittingChange={() => {}} // No-op as startEditTransition handles the state
+                              onSubmittingChange={() => {}} 
                               showSuccessDialogOnSubmit={true}
                               className="bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-4"
                             />
@@ -1038,21 +1120,42 @@ export function MissionClient({
                     ) : (
                       <>
                         {renderSubmissionContent(submission)}
-                        {submission.media_url && (
-                          <div className="mb-2">
-                            <Image
-                              src={submission.media_url || "/placeholder.svg"}
-                              alt="Submission media"
-                              width={200}
-                              height={150}
-                              className="rounded-lg object-cover"
-                              sizes="200px"
-                              quality={70}
-                              loading="lazy"
-                            />
-                          </div>
-                        )}
-                        <p className="text-xs text-muted-foreground">
+                        {submission.media_url && (() => {
+                          // Use parseMediaUrls for multi-media display
+                          const urls = parseMediaUrls(submission.media_url)
+                          
+                          return urls.length > 0 ? (
+                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {urls.map((url, idx) => {
+                                const ext = url.split('.').pop()?.toLowerCase() || ''
+                                const isVideo = ['mp4', 'mov', 'avi', 'webm'].includes(ext)
+                                
+                                return (
+                                  <div key={idx} className="relative aspect-square">
+                                    {isVideo ? (
+                                      <video
+                                        src={url}
+                                        className="w-full h-full rounded-lg object-cover"
+                                        controls
+                                      />
+                                    ) : (
+                                      <Image
+                                        src={url || "/placeholder.svg"}
+                                        alt={`Submission media ${idx + 1}`}
+                                        fill
+                                        className="rounded-lg object-cover"
+                                        sizes="(max-width: 640px) 50vw, 33vw"
+                                        quality={70}
+                                        loading="lazy"
+                                      />
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : null
+                        })()}
+                        <p className="text-xs text-muted-foreground mt-2">
                           Submitted: {new Date(submission.created_at).toLocaleDateString()}
                         </p>
                       </>

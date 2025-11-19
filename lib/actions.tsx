@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 import type { Mission, Profile, Submission, JsonValue } from "@/types/database"
 import { logger } from "@/lib/logger"
+import { parseMediaUrls, serializeMediaUrls, filterValidMediaUrls } from "@/lib/media-utils"
 import {
   createMissionSchema,
   updateMissionSchema,
@@ -190,11 +191,18 @@ export async function submitMission(formData: FormData): Promise<SubmissionRespo
       return { success: false, error: "Mission not found", errorCode: ActionErrorCode.NOT_FOUND }
     }
 
-    let mediaUrl = null
+    let mediaUrls: string[] = []
     if (mediaFile && mediaFile.size > 0) {
       const fileExt = mediaFile.name.split(".").pop()
       const fileName = `${user.id}/${Date.now()}.${fileExt}`
-      const { error: uploadError } = await supabase.storage.from("submissions").upload(fileName, mediaFile)
+      
+      const arrayBuffer = await mediaFile.arrayBuffer()
+      const blob = new Blob([arrayBuffer], { type: mediaFile.type })
+      
+      const { error: uploadError } = await supabase.storage.from("submissions").upload(fileName, blob, {
+        contentType: mediaFile.type,
+        upsert: false
+      })
 
       if (uploadError) {
         logger.error("submitMission - media upload", uploadError, { userId })
@@ -204,14 +212,14 @@ export async function submitMission(formData: FormData): Promise<SubmissionRespo
       const {
         data: { publicUrl },
       } = supabase.storage.from("submissions").getPublicUrl(fileName)
-      mediaUrl = publicUrl
+      mediaUrls = [publicUrl]
     }
 
     const { error } = await supabase.from("submissions").insert({
       mission_id: missionId,
       user_id: user.id,
       text_submission: textSubmission || null,
-      media_url: mediaUrl,
+      media_url: mediaUrls.length > 0 ? JSON.stringify(mediaUrls) : null,
       status: "pending",
       points_awarded: 0,
     })
@@ -376,35 +384,59 @@ export async function createMission(formData: FormData) {
 
     const validatedData = validation.data
     const missionImageFile = formData.get("mission_image") as File | null
+    
+    // Get program IDs from formData
+    const programIdsJson = formData.get("program_ids") as string
+    const programIds = programIdsJson ? JSON.parse(programIdsJson) : []
 
     let imageUrl = null
     if (missionImageFile && missionImageFile.size > 0) {
-      const { data: buckets, error: bucketsError } = await adminClient.storage.listBuckets()
-      if (bucketsError) {
-        logger.error("createMission - list buckets", bucketsError, { userId })
-        return { success: false, error: "Unable to access storage", errorCode: ActionErrorCode.STORAGE_ERROR }
-      }
-
-      const missionsBucket = buckets?.find((bucket) => bucket.id === "missions-media")
-      if (!missionsBucket) {
-        return { success: false, error: "missions-media bucket not found", errorCode: ActionErrorCode.STORAGE_ERROR }
+      if (missionImageFile.size > 4 * 1024 * 1024) {
+        return {
+          success: false,
+          error: "Image size must be less than 4MB",
+          errorCode: ActionErrorCode.VALIDATION_ERROR,
+        }
       }
 
       const fileExt = missionImageFile.name.split(".").pop()
       const fileName = `mission-${Date.now()}.${fileExt}`
-      const { error: uploadError } = await adminClient.storage.from("missions-media").upload(fileName, missionImageFile)
+      
+      try {
+        const arrayBuffer = await missionImageFile.arrayBuffer()
+        const blob = new Blob([arrayBuffer], { type: missionImageFile.type })
+        
+        const { error: uploadError } = await adminClient.storage
+          .from("missions-media")
+          .upload(fileName, blob, {
+            contentType: missionImageFile.type,
+            upsert: true
+          })
 
-      if (uploadError) {
-        logger.error("createMission - image upload", uploadError, { userId })
-        return {
-          success: false,
-          error: `Image upload failed: ${uploadError.message}`,
-          errorCode: ActionErrorCode.STORAGE_ERROR,
+        if (uploadError) {
+          logger.error("createMission - image upload", uploadError, { userId })
+          return {
+            success: false,
+            error: `Image upload failed: ${uploadError.message}`,
+            errorCode: ActionErrorCode.STORAGE_ERROR,
+          }
         }
-      }
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-      imageUrl = `${supabaseUrl}/storage/v1/object/public/missions-media/${fileName}`
+        const {
+          data: { publicUrl },
+        } = adminClient.storage.from("missions-media").getPublicUrl(fileName)
+        
+        imageUrl = publicUrl
+      } catch (error: any) {
+        if (error.message?.includes("Unexpected token") || error.message?.includes("JSON")) {
+           return {
+            success: false,
+            error: "Image is too large for the server to process. Please use a smaller image (under 4MB).",
+            errorCode: ActionErrorCode.STORAGE_ERROR,
+          }
+        }
+        throw error;
+      }
     }
 
     const missionData: Partial<Mission> = {
@@ -412,17 +444,48 @@ export async function createMission(formData: FormData) {
       image_url: imageUrl,
     }
 
-    const { data, error } = await adminClient.from("missions").insert(missionData).select()
+    const { data: mission, error } = await adminClient.from("missions").insert(missionData).select().single()
 
     if (error) {
       logger.error("createMission - database insert", error, { userId })
       return { success: false, error: `Database error: ${error.message}`, errorCode: ActionErrorCode.DATABASE_ERROR }
     }
 
+    // Assign to programs
+    if (programIds.length > 0 && mission) {
+      const programAssignments = programIds.map((programId: string) => ({
+        mission_id: mission.id,
+        program_id: programId
+      }))
+      
+      const { error: programError } = await adminClient
+        .from("mission_programs")
+        .insert(programAssignments)
+        
+      if (programError) {
+        logger.error("Error assigning mission to programs", programError)
+        // Don't fail the whole request, but log it
+      }
+    } else if (mission) {
+      // Assign to default "Base Activities" if no program selected
+      const { data: defaultProgram } = await adminClient
+        .from("programs")
+        .select("id")
+        .eq("is_default", true)
+        .single()
+        
+      if (defaultProgram) {
+        await adminClient.from("mission_programs").insert({
+          mission_id: mission.id,
+          program_id: defaultProgram.id
+        })
+      }
+    }
+
     revalidatePath("/admin")
     revalidatePath("/")
 
-    return { success: true, data }
+    return { success: true, data: mission }
   } catch (error) {
     return handleActionError(error, "createMission", userId)
   }
@@ -445,36 +508,59 @@ export async function updateMission(formData: FormData) {
 
     const validatedData = validation.data
     const missionImageFile = formData.get("mission_image") as File | null
+    
+    // Get program IDs
+    const programIdsJson = formData.get("program_ids") as string
+    const programIds = programIdsJson ? JSON.parse(programIdsJson) : []
 
     let imageUrl = null
     if (missionImageFile && missionImageFile.size > 0) {
-      const { data: buckets, error: bucketsError } = await adminClient.storage.listBuckets()
-      if (bucketsError) {
-        logger.error("updateMission - list buckets", bucketsError, { userId })
-        return { success: false, error: "Unable to access storage", errorCode: ActionErrorCode.STORAGE_ERROR }
-      }
-
-      const missionsBucket = buckets?.find((bucket) => bucket.id === "missions-media")
-      if (!missionsBucket) {
-        return { success: false, error: "missions-media bucket not found", errorCode: ActionErrorCode.STORAGE_ERROR }
+      if (missionImageFile.size > 4 * 1024 * 1024) {
+        return {
+          success: false,
+          error: "Image size must be less than 4MB",
+          errorCode: ActionErrorCode.VALIDATION_ERROR,
+        }
       }
 
       const fileExt = missionImageFile.name.split(".").pop()
       const fileName = `mission-${validatedData.id}-${Date.now()}.${fileExt}`
-      const filePath = `${userId}/${fileName}`
-      const { error: uploadError } = await adminClient.storage.from("missions-media").upload(filePath, missionImageFile)
+      
+      try {
+        const arrayBuffer = await missionImageFile.arrayBuffer()
+        const blob = new Blob([arrayBuffer], { type: missionImageFile.type })
+        
+        const { error: uploadError } = await adminClient.storage
+          .from("missions-media")
+          .upload(fileName, blob, {
+            contentType: missionImageFile.type,
+            upsert: true
+          })
 
-      if (uploadError) {
-        logger.error("updateMission - image upload", uploadError, { userId })
-        return {
-          success: false,
-          error: `Image upload failed: ${uploadError.message}`,
-          errorCode: ActionErrorCode.STORAGE_ERROR,
+        if (uploadError) {
+          logger.error("updateMission - image upload", uploadError, { userId })
+          return {
+            success: false,
+            error: `Image upload failed: ${uploadError.message}`,
+            errorCode: ActionErrorCode.STORAGE_ERROR,
+          }
         }
-      }
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-      imageUrl = `${supabaseUrl}/storage/v1/object/public/missions-media/${fileName}`
+        const {
+          data: { publicUrl },
+        } = adminClient.storage.from("missions-media").getPublicUrl(fileName)
+        
+        imageUrl = publicUrl
+      } catch (error: any) {
+        if (error.message?.includes("Unexpected token") || error.message?.includes("JSON")) {
+           return {
+            success: false,
+            error: "Image is too large for the server to process. Please use a smaller image (under 4MB).",
+            errorCode: ActionErrorCode.STORAGE_ERROR,
+          }
+        }
+        throw error;
+      }
     }
 
     const updateData: Partial<Mission> = {
@@ -492,6 +578,20 @@ export async function updateMission(formData: FormData) {
         error: `Failed to update mission: ${error.message}`,
         errorCode: ActionErrorCode.DATABASE_ERROR,
       }
+    }
+
+    // Update program assignments
+    // First delete existing
+    await adminClient.from("mission_programs").delete().eq("mission_id", validatedData.id)
+    
+    // Then insert new ones
+    if (programIds.length > 0) {
+      const programAssignments = programIds.map((programId: string) => ({
+        mission_id: validatedData.id,
+        program_id: programId
+      }))
+      
+      await adminClient.from("mission_programs").insert(programAssignments)
     }
 
     revalidatePath("/admin")
@@ -578,7 +678,13 @@ export async function updateAvatar(formData: FormData): Promise<AvatarUpdateResp
     const fileExt = file.name.split(".").pop()
     const fileName = `${user.id}/avatar.${fileExt}`
 
-    const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, file, { upsert: true })
+    const arrayBuffer = await file.arrayBuffer()
+    const blob = new Blob([arrayBuffer], { type: file.type })
+
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, blob, { 
+      contentType: file.type,
+      upsert: true 
+    })
 
     if (uploadError) {
       logger.error("updateAvatar - storage upload", uploadError, { userId })
@@ -825,6 +931,9 @@ export async function fetchAllCommunityActivity(page = 1, limit = 10): Promise<C
         const profile = profilesMap.get(submission.user_id)
         const mission = missionsMap.get(submission.mission_id)
 
+        if (!profile) return
+        // </CHANGE>
+
         allActivities.push({
           id: submission.id,
           created_at: submission.created_at,
@@ -854,6 +963,9 @@ export async function fetchAllCommunityActivity(page = 1, limit = 10): Promise<C
 
         profileActivities.forEach((activity) => {
           const profile = profileUsersMap.get(activity.user_id)
+
+          if (!profile) return
+          // </CHANGE>
 
           allActivities.push({
             id: `profile-${activity.id}`,
@@ -1026,7 +1138,14 @@ export async function saveDraft(formData: FormData): Promise<DraftResponse> {
       }
     }
 
-    const { missionId, textSubmission, answers, mediaFile, existingDraftId } = validation.data
+    const { missionId, textSubmission, answers, existingDraftId } = validation.data
+    
+    const mediaFiles: File[] = []
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+        mediaFiles.push(value)
+      }
+    }
 
     const { data: existingDraft } = await supabase
       .from("submissions")
@@ -1037,18 +1156,26 @@ export async function saveDraft(formData: FormData): Promise<DraftResponse> {
       .maybeSingle()
 
     const draftIdToUse = existingDraftId || existingDraft?.id
-    const oldMediaUrl = existingDraft?.media_url
+    
+    let existingMediaUrls: string[] = existingDraft?.media_url 
+      ? parseMediaUrls(existingDraft.media_url)
+      : []
 
-    let mediaUrl = oldMediaUrl
-
-    if (mediaFile && mediaFile.size > 0) {
+    const newMediaUrls: string[] = []
+    for (const mediaFile of mediaFiles) {
       const fileExt = mediaFile.name.split(".").pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `${user.id}/${fileName}`
 
+      const arrayBuffer = await mediaFile.arrayBuffer()
+      const blob = new Blob([arrayBuffer], { type: mediaFile.type })
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("submissions-media")
-        .upload(filePath, mediaFile)
+        .upload(filePath, blob, {
+          contentType: mediaFile.type,
+          upsert: false
+        })
 
       if (uploadError) {
         logger.error("saveDraft - media upload", uploadError, { userId })
@@ -1063,19 +1190,10 @@ export async function saveDraft(formData: FormData): Promise<DraftResponse> {
         data: { publicUrl },
       } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
 
-      mediaUrl = publicUrl
-
-      if (oldMediaUrl && oldMediaUrl !== mediaUrl) {
-        try {
-          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
-          if (oldPath) {
-            await supabase.storage.from("submissions-media").remove([oldPath])
-          }
-        } catch (cleanupError) {
-          logger.error("saveDraft - media cleanup", cleanupError, { userId })
-        }
-      }
+      newMediaUrls.push(publicUrl)
     }
+
+    const allMediaUrls = [...existingMediaUrls, ...newMediaUrls]
 
     const draftData: Partial<Submission> = {
       mission_id: missionId,
@@ -1090,8 +1208,8 @@ export async function saveDraft(formData: FormData): Promise<DraftResponse> {
       draftData.text_submission = textSubmission
     }
 
-    if (mediaUrl) {
-      draftData.media_url = mediaUrl
+    if (allMediaUrls.length > 0) {
+      draftData.media_url = serializeMediaUrls(allMediaUrls) as any
     }
 
     if (draftIdToUse) {
@@ -1215,16 +1333,38 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
 
     userId = user.id
 
-    const validation = validateFormData(formData, updateSubmissionSchema)
-    if (!validation.success) {
-      return {
-        success: false,
-        error: validation.error.errors[0]?.message || "Invalid submission data",
-        errorCode: ActionErrorCode.VALIDATION_ERROR,
+    const submissionId = formData.get("submissionId") as string
+    const textSubmission = formData.get("textSubmission") as string | null
+    const answersString = formData.get("answers") as string | null
+    const removedMediaUrlsString = formData.get("removedMediaUrls") as string | null
+    
+    let answers: Record<string, JsonValue> | null = null
+    if (answersString) {
+      try {
+        answers = JSON.parse(answersString)
+      } catch (e) {
+        // Ignore parse error
+      }
+    }
+    
+    let removedMediaUrls: string[] = []
+    if (removedMediaUrlsString) {
+      try {
+        const parsed = JSON.parse(removedMediaUrlsString)
+        if (Array.isArray(parsed)) {
+          removedMediaUrls = parsed
+        }
+      } catch (e) {
+        // Ignore parse error
       }
     }
 
-    const { submissionId, textSubmission, answers, mediaFile, removedMediaUrls } = validation.data
+    const mediaFiles: File[] = []
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+        mediaFiles.push(value)
+      }
+    }
 
     const { data: currentSubmission, error: fetchError } = await supabase
       .from("submissions")
@@ -1241,38 +1381,55 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
       }
     }
 
-    let finalMediaUrl = currentSubmission.media_url
-    const oldMediaUrl = currentSubmission.media_url
+    let existingMediaUrls: string[] = currentSubmission.media_url
+      ? parseMediaUrls(currentSubmission.media_url)
+      : []
 
-    if (removedMediaUrls && removedMediaUrls.includes(currentSubmission.media_url || "")) {
-      finalMediaUrl = null
-
-      if (oldMediaUrl) {
+    if (removedMediaUrls.length > 0) {
+      existingMediaUrls = existingMediaUrls.filter(url => !removedMediaUrls.includes(url))
+      
+      // Delete removed media from storage
+      for (const removedUrl of removedMediaUrls) {
         try {
-          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
-          if (oldPath) {
-            await supabase.storage.from("submissions-media").remove([oldPath])
+          const urlParts = removedUrl.split("/submissions-media/")
+          if (urlParts.length > 1) {
+            const path = urlParts[1]
+            const { error: deleteError } = await supabase.storage.from("submissions-media").remove([path])
+            
+            if (deleteError) {
+              logger.error("updateSubmission - media delete", deleteError, { userId, path })
+            }
           }
         } catch (cleanupError) {
-          logger.error("updateSubmission - media cleanup", cleanupError, { userId })
+          logger.error("updateSubmission - media cleanup exception", cleanupError, { userId, removedUrl })
         }
       }
     }
 
-    if (mediaFile && mediaFile.size > 0) {
+    // Upload new media files
+    const newMediaUrls: string[] = []
+    for (let i = 0; i < mediaFiles.length; i++) {
+      const mediaFile = mediaFiles[i]
+      
       const fileExt = mediaFile.name.split(".").pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `${user.id}/${fileName}`
 
+      const arrayBuffer = await mediaFile.arrayBuffer()
+      const blob = new Blob([arrayBuffer], { type: mediaFile.type })
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("submissions-media")
-        .upload(filePath, mediaFile)
+        .upload(filePath, blob, {
+          contentType: mediaFile.type,
+          upsert: false
+        })
 
       if (uploadError) {
         logger.error("updateSubmission - media upload", uploadError, { userId })
         return {
           success: false,
-          error: "Failed to upload media. Please try again",
+          error: `Failed to upload ${mediaFile.name}. Please try again.`,
           errorCode: ActionErrorCode.STORAGE_ERROR,
         }
       }
@@ -1281,22 +1438,13 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
         data: { publicUrl },
       } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
 
-      finalMediaUrl = publicUrl
-
-      if (oldMediaUrl && oldMediaUrl !== finalMediaUrl) {
-        try {
-          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
-          if (oldPath) {
-            await supabase.storage.from("submissions-media").remove([oldPath])
-          }
-        } catch (cleanupError) {
-          logger.error("updateSubmission - old media cleanup", cleanupError, { userId })
-        }
-      }
+      newMediaUrls.push(publicUrl)
     }
 
+    const finalMediaUrls = [...existingMediaUrls, ...newMediaUrls]
+
     const updateData: Partial<Submission> = {
-      media_url: finalMediaUrl,
+      media_url: finalMediaUrls.length > 0 ? finalMediaUrls as any : null,
       updated_at: new Date().toISOString(),
     }
 
@@ -1313,11 +1461,12 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
       }
     }
 
-    const { error } = await supabase
+    const { error, data: updatedData } = await supabase
       .from("submissions")
       .update(updateData)
       .eq("id", submissionId)
       .eq("user_id", user.id)
+      .select()
 
     if (error) {
       logger.error("updateSubmission - database update", error, { userId })
@@ -1327,8 +1476,11 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
         errorCode: ActionErrorCode.DATABASE_ERROR,
       }
     }
-
-    revalidatePath(`/mission/${currentSubmission.mission_id}`)
+    
+    revalidatePath(`/mission/${currentSubmission.mission_id}`, 'max')
+    revalidatePath('/', 'max')
+    revalidatePath('/activity', 'max')
+    
     return { success: true, data: { wasApproved: currentSubmission.status === "approved" } }
   } catch (error) {
     return handleActionError(error, "updateSubmission", userId)
@@ -1358,7 +1510,13 @@ export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraf
     const draftId = formData.get("draftId") as string
     const answersString = formData.get("answers") as string | null
     const textSubmission = formData.get("textSubmission") as string | null
-    const mediaFile = formData.get("mediaFile") as File | null
+    
+    const mediaFiles: File[] = []
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+        mediaFiles.push(value)
+      }
+    }
 
     if (!draftId) {
       return { success: false, error: "Draft ID is required", errorCode: ActionErrorCode.VALIDATION_ERROR }
@@ -1376,17 +1534,25 @@ export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraf
       return { success: false, error: "Draft not found or already submitted", errorCode: ActionErrorCode.NOT_FOUND }
     }
 
-    let finalMediaUrl = draft.media_url
-    const oldMediaUrl = draft.media_url
+    let existingMediaUrls: string[] = draft.media_url
+      ? parseMediaUrls(draft.media_url)
+      : []
 
-    if (mediaFile && mediaFile.size > 0) {
+    const newMediaUrls: string[] = []
+    for (const mediaFile of mediaFiles) {
       const fileExt = mediaFile.name.split(".").pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `${user.id}/${fileName}`
 
+      const arrayBuffer = await mediaFile.arrayBuffer()
+      const blob = new Blob([arrayBuffer], { type: mediaFile.type })
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from("submissions-media")
-        .upload(filePath, mediaFile)
+        .upload(filePath, blob, {
+          contentType: mediaFile.type,
+          upsert: false
+        })
 
       if (uploadError) {
         logger.error("submitDraftAsFinal - media upload", uploadError, { userId })
@@ -1401,23 +1567,14 @@ export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraf
         data: { publicUrl },
       } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
 
-      finalMediaUrl = publicUrl
-
-      if (oldMediaUrl && oldMediaUrl !== finalMediaUrl) {
-        try {
-          const oldPath = oldMediaUrl.split("/submissions-media/")[1]
-          if (oldPath) {
-            await supabase.storage.from("submissions-media").remove([oldPath])
-          }
-        } catch (cleanupError) {
-          logger.error("submitDraftAsFinal - media cleanup", cleanupError, { userId })
-        }
-      }
+      newMediaUrls.push(publicUrl)
     }
+
+    const finalMediaUrls = [...existingMediaUrls, ...newMediaUrls]
 
     const updateData: Partial<Submission> = {
       status: "pending",
-      media_url: finalMediaUrl,
+      media_url: finalMediaUrls.length > 0 ? serializeMediaUrls(finalMediaUrls) as any : null,
       updated_at: new Date().toISOString(),
     }
 
@@ -1468,44 +1625,76 @@ export async function createNewSubmission(formData: FormData): Promise<Submissio
     const missionId = formData.get("missionId") as string
     const answersString = formData.get("answers") as string | null
     const textSubmission = formData.get("textSubmission") as string | null
-    const mediaFile = formData.get("mediaFile") as File | null
+    
+    const mediaFiles: File[] = []
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+        mediaFiles.push(value)
+      }
+    }
 
     if (!missionId) {
       return { success: false, error: "Mission ID is required", errorCode: ActionErrorCode.VALIDATION_ERROR }
     }
 
-    let mediaUrl = null
+    const mediaUrls: string[] = []
+    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB max
 
-    if (mediaFile && mediaFile.size > 0) {
+    for (const mediaFile of mediaFiles) {
+      if (mediaFile.size > MAX_FILE_SIZE) {
+        logger.error("createNewSubmission - file too large", new Error(`File size: ${mediaFile.size}`), { userId })
+        return {
+          success: false,
+          error: `File too large (${(mediaFile.size / (1024 * 1024)).toFixed(2)}MB). Maximum 50MB allowed.`,
+          errorCode: ActionErrorCode.VALIDATION_ERROR,
+        }
+      }
+
       const fileExt = mediaFile.name.split(".").pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `${user.id}/${fileName}`
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("submissions-media")
-        .upload(filePath, mediaFile)
+      try {
+        const arrayBuffer = await mediaFile.arrayBuffer()
+        const blob = new Blob([arrayBuffer], { type: mediaFile.type })
 
-      if (uploadError) {
-        logger.error("createNewSubmission - media upload", uploadError, { userId })
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("submissions-media")
+          .upload(filePath, blob, {
+            cacheControl: '3600',
+            contentType: mediaFile.type,
+            upsert: false
+          })
+
+        if (uploadError) {
+          logger.error("createNewSubmission - media upload", uploadError, { userId })
+          return {
+            success: false,
+            error: `Media upload failed: ${uploadError.message}. Try compressing your file.`,
+            errorCode: ActionErrorCode.STORAGE_ERROR,
+          }
+        }
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
+
+        mediaUrls.push(publicUrl)
+      } catch (uploadException) {
+        logger.error("createNewSubmission - media upload exception", uploadException, { userId })
         return {
           success: false,
-          error: "Failed to upload media. Please try again",
+          error: "Media upload failed. File may be too large or corrupted.",
           errorCode: ActionErrorCode.STORAGE_ERROR,
         }
       }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("submissions-media").getPublicUrl(uploadData.path)
-
-      mediaUrl = publicUrl
     }
 
     const submissionData: Partial<Submission> = {
       mission_id: missionId,
       user_id: user.id,
       status: "pending",
-      media_url: mediaUrl,
+      media_url: mediaUrls.length > 0 ? serializeMediaUrls(mediaUrls) as any : null,
       created_at: new Date().toISOString(),
     }
 
@@ -1531,6 +1720,8 @@ export async function createNewSubmission(formData: FormData): Promise<Submissio
     }
 
     revalidatePath(`/mission/${missionId}`)
+    revalidatePath("/admin")
+    revalidatePath("/admin/submissions")
     return { success: true, data: undefined }
   } catch (error) {
     return handleActionError(error, "createNewSubmission", userId)
