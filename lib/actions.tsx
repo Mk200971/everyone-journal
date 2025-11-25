@@ -5,14 +5,13 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 import type { Mission, Profile, Submission, JsonValue } from "@/types/database"
 import { logger } from "@/lib/logger"
-import { parseMediaUrls, serializeMediaUrls, filterValidMediaUrls } from "@/lib/media-utils"
+import { parseMediaUrls, serializeMediaUrls } from "@/lib/media-utils"
 import {
   createMissionSchema,
   updateMissionSchema,
   deleteMissionSchema,
   submitMissionSchema,
   saveDraftSchema,
-  updateSubmissionSchema,
   deleteDraftSchema,
   updateProfileSchema,
   updateAvatarSchema,
@@ -139,11 +138,11 @@ async function getAuthorizedAdminClient(): Promise<{
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("role")
     .eq("id", user.id)
     .single()
 
-  if (profileError || !profile?.is_admin) {
+  if (profileError || profile?.role !== "admin") {
     throw new Error("Unauthorized: Admin access required")
   }
 
@@ -195,13 +194,13 @@ export async function submitMission(formData: FormData): Promise<SubmissionRespo
     if (mediaFile && mediaFile.size > 0) {
       const fileExt = mediaFile.name.split(".").pop()
       const fileName = `${user.id}/${Date.now()}.${fileExt}`
-      
+
       const arrayBuffer = await mediaFile.arrayBuffer()
       const blob = new Blob([arrayBuffer], { type: mediaFile.type })
-      
+
       const { error: uploadError } = await supabase.storage.from("submissions").upload(fileName, blob, {
         contentType: mediaFile.type,
-        upsert: false
+        upsert: false,
       })
 
       if (uploadError) {
@@ -384,7 +383,7 @@ export async function createMission(formData: FormData) {
 
     const validatedData = validation.data
     const missionImageFile = formData.get("mission_image") as File | null
-    
+
     // Get program IDs from formData
     const programIdsJson = formData.get("program_ids") as string
     const programIds = programIdsJson ? JSON.parse(programIdsJson) : []
@@ -401,17 +400,15 @@ export async function createMission(formData: FormData) {
 
       const fileExt = missionImageFile.name.split(".").pop()
       const fileName = `mission-${Date.now()}.${fileExt}`
-      
+
       try {
         const arrayBuffer = await missionImageFile.arrayBuffer()
         const blob = new Blob([arrayBuffer], { type: missionImageFile.type })
-        
-        const { error: uploadError } = await adminClient.storage
-          .from("missions-media")
-          .upload(fileName, blob, {
-            contentType: missionImageFile.type,
-            upsert: true
-          })
+
+        const { error: uploadError } = await adminClient.storage.from("missions-media").upload(fileName, blob, {
+          contentType: missionImageFile.type,
+          upsert: true,
+        })
 
         if (uploadError) {
           logger.error("createMission - image upload", uploadError, { userId })
@@ -425,17 +422,17 @@ export async function createMission(formData: FormData) {
         const {
           data: { publicUrl },
         } = adminClient.storage.from("missions-media").getPublicUrl(fileName)
-        
+
         imageUrl = publicUrl
       } catch (error: any) {
         if (error.message?.includes("Unexpected token") || error.message?.includes("JSON")) {
-           return {
+          return {
             success: false,
             error: "Image is too large for the server to process. Please use a smaller image (under 4MB).",
             errorCode: ActionErrorCode.STORAGE_ERROR,
           }
         }
-        throw error;
+        throw error
       }
     }
 
@@ -455,29 +452,23 @@ export async function createMission(formData: FormData) {
     if (programIds.length > 0 && mission) {
       const programAssignments = programIds.map((programId: string) => ({
         mission_id: mission.id,
-        program_id: programId
+        program_id: programId,
       }))
-      
-      const { error: programError } = await adminClient
-        .from("mission_programs")
-        .insert(programAssignments)
-        
+
+      const { error: programError } = await adminClient.from("mission_programs").insert(programAssignments)
+
       if (programError) {
         logger.error("Error assigning mission to programs", programError)
         // Don't fail the whole request, but log it
       }
     } else if (mission) {
       // Assign to default "Base Activities" if no program selected
-      const { data: defaultProgram } = await adminClient
-        .from("programs")
-        .select("id")
-        .eq("is_default", true)
-        .single()
-        
+      const { data: defaultProgram } = await adminClient.from("programs").select("id").eq("is_default", true).single()
+
       if (defaultProgram) {
         await adminClient.from("mission_programs").insert({
           mission_id: mission.id,
-          program_id: defaultProgram.id
+          program_id: defaultProgram.id,
         })
       }
     }
@@ -508,7 +499,7 @@ export async function updateMission(formData: FormData) {
 
     const validatedData = validation.data
     const missionImageFile = formData.get("mission_image") as File | null
-    
+
     // Get program IDs
     const programIdsJson = formData.get("program_ids") as string
     const programIds = programIdsJson ? JSON.parse(programIdsJson) : []
@@ -525,17 +516,15 @@ export async function updateMission(formData: FormData) {
 
       const fileExt = missionImageFile.name.split(".").pop()
       const fileName = `mission-${validatedData.id}-${Date.now()}.${fileExt}`
-      
+
       try {
         const arrayBuffer = await missionImageFile.arrayBuffer()
         const blob = new Blob([arrayBuffer], { type: missionImageFile.type })
-        
-        const { error: uploadError } = await adminClient.storage
-          .from("missions-media")
-          .upload(fileName, blob, {
-            contentType: missionImageFile.type,
-            upsert: true
-          })
+
+        const { error: uploadError } = await adminClient.storage.from("missions-media").upload(fileName, blob, {
+          contentType: missionImageFile.type,
+          upsert: true,
+        })
 
         if (uploadError) {
           logger.error("updateMission - image upload", uploadError, { userId })
@@ -549,17 +538,17 @@ export async function updateMission(formData: FormData) {
         const {
           data: { publicUrl },
         } = adminClient.storage.from("missions-media").getPublicUrl(fileName)
-        
+
         imageUrl = publicUrl
       } catch (error: any) {
         if (error.message?.includes("Unexpected token") || error.message?.includes("JSON")) {
-           return {
+          return {
             success: false,
             error: "Image is too large for the server to process. Please use a smaller image (under 4MB).",
             errorCode: ActionErrorCode.STORAGE_ERROR,
           }
         }
-        throw error;
+        throw error
       }
     }
 
@@ -583,14 +572,14 @@ export async function updateMission(formData: FormData) {
     // Update program assignments
     // First delete existing
     await adminClient.from("mission_programs").delete().eq("mission_id", validatedData.id)
-    
+
     // Then insert new ones
     if (programIds.length > 0) {
       const programAssignments = programIds.map((programId: string) => ({
         mission_id: validatedData.id,
-        program_id: programId
+        program_id: programId,
       }))
-      
+
       await adminClient.from("mission_programs").insert(programAssignments)
     }
 
@@ -681,9 +670,9 @@ export async function updateAvatar(formData: FormData): Promise<AvatarUpdateResp
     const arrayBuffer = await file.arrayBuffer()
     const blob = new Blob([arrayBuffer], { type: file.type })
 
-    const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, blob, { 
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, blob, {
       contentType: file.type,
-      upsert: true 
+      upsert: true,
     })
 
     if (uploadError) {
@@ -1139,10 +1128,10 @@ export async function saveDraft(formData: FormData): Promise<DraftResponse> {
     }
 
     const { missionId, textSubmission, answers, existingDraftId } = validation.data
-    
+
     const mediaFiles: File[] = []
     for (const [key, value] of formData.entries()) {
-      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+      if (key.startsWith("mediaFile") && value instanceof File && value.size > 0) {
         mediaFiles.push(value)
       }
     }
@@ -1156,10 +1145,8 @@ export async function saveDraft(formData: FormData): Promise<DraftResponse> {
       .maybeSingle()
 
     const draftIdToUse = existingDraftId || existingDraft?.id
-    
-    let existingMediaUrls: string[] = existingDraft?.media_url 
-      ? parseMediaUrls(existingDraft.media_url)
-      : []
+
+    const existingMediaUrls: string[] = existingDraft?.media_url ? parseMediaUrls(existingDraft.media_url) : []
 
     const newMediaUrls: string[] = []
     for (const mediaFile of mediaFiles) {
@@ -1174,7 +1161,7 @@ export async function saveDraft(formData: FormData): Promise<DraftResponse> {
         .from("submissions-media")
         .upload(filePath, blob, {
           contentType: mediaFile.type,
-          upsert: false
+          upsert: false,
         })
 
       if (uploadError) {
@@ -1337,7 +1324,7 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
     const textSubmission = formData.get("textSubmission") as string | null
     const answersString = formData.get("answers") as string | null
     const removedMediaUrlsString = formData.get("removedMediaUrls") as string | null
-    
+
     let answers: Record<string, JsonValue> | null = null
     if (answersString) {
       try {
@@ -1346,7 +1333,7 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
         // Ignore parse error
       }
     }
-    
+
     let removedMediaUrls: string[] = []
     if (removedMediaUrlsString) {
       try {
@@ -1361,7 +1348,7 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
 
     const mediaFiles: File[] = []
     for (const [key, value] of formData.entries()) {
-      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+      if (key.startsWith("mediaFile") && value instanceof File && value.size > 0) {
         mediaFiles.push(value)
       }
     }
@@ -1381,13 +1368,11 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
       }
     }
 
-    let existingMediaUrls: string[] = currentSubmission.media_url
-      ? parseMediaUrls(currentSubmission.media_url)
-      : []
+    let existingMediaUrls: string[] = currentSubmission.media_url ? parseMediaUrls(currentSubmission.media_url) : []
 
     if (removedMediaUrls.length > 0) {
-      existingMediaUrls = existingMediaUrls.filter(url => !removedMediaUrls.includes(url))
-      
+      existingMediaUrls = existingMediaUrls.filter((url) => !removedMediaUrls.includes(url))
+
       // Delete removed media from storage
       for (const removedUrl of removedMediaUrls) {
         try {
@@ -1395,7 +1380,7 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
           if (urlParts.length > 1) {
             const path = urlParts[1]
             const { error: deleteError } = await supabase.storage.from("submissions-media").remove([path])
-            
+
             if (deleteError) {
               logger.error("updateSubmission - media delete", deleteError, { userId, path })
             }
@@ -1410,7 +1395,7 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
     const newMediaUrls: string[] = []
     for (let i = 0; i < mediaFiles.length; i++) {
       const mediaFile = mediaFiles[i]
-      
+
       const fileExt = mediaFile.name.split(".").pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `${user.id}/${fileName}`
@@ -1422,7 +1407,7 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
         .from("submissions-media")
         .upload(filePath, blob, {
           contentType: mediaFile.type,
-          upsert: false
+          upsert: false,
         })
 
       if (uploadError) {
@@ -1444,7 +1429,7 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
     const finalMediaUrls = [...existingMediaUrls, ...newMediaUrls]
 
     const updateData: Partial<Submission> = {
-      media_url: finalMediaUrls.length > 0 ? finalMediaUrls as any : null,
+      media_url: finalMediaUrls.length > 0 ? (finalMediaUrls as any) : null,
       updated_at: new Date().toISOString(),
     }
 
@@ -1476,11 +1461,11 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
         errorCode: ActionErrorCode.DATABASE_ERROR,
       }
     }
-    
-    revalidatePath(`/mission/${currentSubmission.mission_id}`, 'max')
-    revalidatePath('/', 'max')
-    revalidatePath('/activity', 'max')
-    
+
+    revalidatePath(`/mission/${currentSubmission.mission_id}`, "max")
+    revalidatePath("/", "max")
+    revalidatePath("/activity", "max")
+
     return { success: true, data: { wasApproved: currentSubmission.status === "approved" } }
   } catch (error) {
     return handleActionError(error, "updateSubmission", userId)
@@ -1510,10 +1495,10 @@ export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraf
     const draftId = formData.get("draftId") as string
     const answersString = formData.get("answers") as string | null
     const textSubmission = formData.get("textSubmission") as string | null
-    
+
     const mediaFiles: File[] = []
     for (const [key, value] of formData.entries()) {
-      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+      if (key.startsWith("mediaFile") && value instanceof File && value.size > 0) {
         mediaFiles.push(value)
       }
     }
@@ -1534,9 +1519,7 @@ export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraf
       return { success: false, error: "Draft not found or already submitted", errorCode: ActionErrorCode.NOT_FOUND }
     }
 
-    let existingMediaUrls: string[] = draft.media_url
-      ? parseMediaUrls(draft.media_url)
-      : []
+    const existingMediaUrls: string[] = draft.media_url ? parseMediaUrls(draft.media_url) : []
 
     const newMediaUrls: string[] = []
     for (const mediaFile of mediaFiles) {
@@ -1551,7 +1534,7 @@ export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraf
         .from("submissions-media")
         .upload(filePath, blob, {
           contentType: mediaFile.type,
-          upsert: false
+          upsert: false,
         })
 
       if (uploadError) {
@@ -1574,7 +1557,7 @@ export async function submitDraftAsFinal(formData: FormData): Promise<SubmitDraf
 
     const updateData: Partial<Submission> = {
       status: "pending",
-      media_url: finalMediaUrls.length > 0 ? serializeMediaUrls(finalMediaUrls) as any : null,
+      media_url: finalMediaUrls.length > 0 ? (serializeMediaUrls(finalMediaUrls) as any) : null,
       updated_at: new Date().toISOString(),
     }
 
@@ -1625,10 +1608,10 @@ export async function createNewSubmission(formData: FormData): Promise<Submissio
     const missionId = formData.get("missionId") as string
     const answersString = formData.get("answers") as string | null
     const textSubmission = formData.get("textSubmission") as string | null
-    
+
     const mediaFiles: File[] = []
     for (const [key, value] of formData.entries()) {
-      if (key.startsWith('mediaFile') && value instanceof File && value.size > 0) {
+      if (key.startsWith("mediaFile") && value instanceof File && value.size > 0) {
         mediaFiles.push(value)
       }
     }
@@ -1661,9 +1644,9 @@ export async function createNewSubmission(formData: FormData): Promise<Submissio
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("submissions-media")
           .upload(filePath, blob, {
-            cacheControl: '3600',
+            cacheControl: "3600",
             contentType: mediaFile.type,
-            upsert: false
+            upsert: false,
           })
 
         if (uploadError) {
@@ -1694,7 +1677,7 @@ export async function createNewSubmission(formData: FormData): Promise<Submissio
       mission_id: missionId,
       user_id: user.id,
       status: "pending",
-      media_url: mediaUrls.length > 0 ? serializeMediaUrls(mediaUrls) as any : null,
+      media_url: mediaUrls.length > 0 ? (serializeMediaUrls(mediaUrls) as any) : null,
       created_at: new Date().toISOString(),
     }
 

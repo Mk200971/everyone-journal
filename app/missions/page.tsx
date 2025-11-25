@@ -1,7 +1,7 @@
-import { Target } from 'lucide-react'
+import { Target } from "lucide-react"
 import { Navbar } from "@/components/navbar"
 import { createClient } from "@/lib/supabase/server"
-import { redirect } from 'next/navigation'
+import { redirect } from "next/navigation"
 import { MissionsPageClient } from "@/components/missions-page-client"
 
 interface Mission {
@@ -42,16 +42,10 @@ async function getMissionsData() {
   }
 
   // Get user profile to check role
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
-  let query = supabase
-    .from("missions")
-    .select(
-      `
+  let query = supabase.from("missions").select(
+    `
       id,
       title,
       description,
@@ -73,21 +67,21 @@ async function getMissionsData() {
         url
       )
     `,
-    )
+  )
 
-  // If not admin, filter by assignments
+  // Only admins can see all missions - all other users MUST have explicit assignments
   if (profile?.role !== "admin") {
-    const { data: assignments } = await supabase
-      .from("mission_assignments")
-      .select("mission_id")
-      .eq("user_id", user.id)
+    const { data: assignments } = await supabase.from("mission_assignments").select("mission_id").eq("user_id", user.id)
 
     const assignedMissionIds = assignments?.map((a) => a.mission_id) || []
-    
+
+    // If user has no assignments, return empty array
+    // This ensures users can ONLY see missions explicitly assigned to them via /admin/users
     if (assignedMissionIds.length === 0) {
       return []
     }
 
+    // Filter to show ONLY assigned missions
     query = query.in("id", assignedMissionIds)
   }
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -27,7 +27,8 @@ export function MediaCarousel({ mediaUrls, className, showControls = true, autoH
   }
 
   const isVideo = (url: string) => {
-    return url.includes(".mp4") || url.includes(".mov") || url.includes("video")
+    const ext = url.split("?")[0].split(".").pop()?.toLowerCase() || ""
+    return ["mp4", "mov", "avi", "webm"].includes(ext) || url.includes("video")
   }
 
   return (
@@ -41,6 +42,7 @@ export function MediaCarousel({ mediaUrls, className, showControls = true, autoH
             controls
             className="w-full h-full object-cover"
             preload="metadata"
+            crossOrigin="anonymous"
           />
         ) : (
           <Image

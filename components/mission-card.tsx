@@ -65,6 +65,10 @@ export function MissionCard({ mission, priority = false }: MissionCardProps) {
         return {
           color: "bg-[#b45309] text-[#FEEFCE] border-[#b45309]",
         }
+      case "Assignment":
+        return {
+          color: "bg-[#404040] text-[#F2F2F2] border-[#404040]",
+        }
       default:
         return {
           color: "bg-[#404040] text-[#F2F2F2] border-[#404040]",

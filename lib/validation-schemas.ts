@@ -15,7 +15,7 @@ export const createMissionSchema = z.object({
   instructions: z.string().max(5000, "Instructions must be less than 5000 characters").optional().nullable(),
   tips_inspiration: z.string().max(2000, "Tips must be less than 2000 characters").optional().nullable(),
   points_value: z.number().int().min(1, "Points must be at least 1").max(1000, "Points must be less than 1000"),
-  type: z.enum(["Action", "Core", "Lite", "Elevate"], {
+  type: z.enum(["Action", "Core", "Lite", "Elevate", "Assignment"], {
     errorMap: () => ({ message: "Invalid mission type" }),
   }),
   resource_id: z.string().uuid().optional().nullable(),

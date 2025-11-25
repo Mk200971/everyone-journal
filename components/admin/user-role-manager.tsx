@@ -1,27 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { updateUserRole } from "@/lib/admin-actions"
 import { toast } from "@/components/ui/use-toast"
-import { Search } from 'lucide-react'
+import { Search } from "lucide-react"
 import type { Profile, UserRole } from "@/types/database"
 
 interface UserRoleManagerProps {
@@ -33,9 +20,10 @@ export function UserRoleManager({ initialUsers }: UserRoleManagerProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredUsers = users.filter(
+    (user) =>
+      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
@@ -43,12 +31,18 @@ export function UserRoleManager({ initialUsers }: UserRoleManagerProps) {
     try {
       const result = await updateUserRole(userId, newRole)
       if (result.success) {
-        setUsers(users.map(user => 
-          user.id === userId ? { ...user, role: newRole, is_admin: newRole === 'admin' } : user
-        ))
+        setUsers(
+          users.map((user) => (user.id === userId ? { ...user, role: newRole, is_admin: newRole === "admin" } : user)),
+        )
         toast({
           title: "Role updated",
           description: "User role has been successfully updated.",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to update user role.",
+          variant: "destructive",
         })
       }
     } catch (error) {
@@ -64,10 +58,14 @@ export function UserRoleManager({ initialUsers }: UserRoleManagerProps) {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/20'
-      case 'participant': return 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border-blue-500/20'
-      case 'view_only': return 'bg-gray-500/10 text-gray-500 hover:bg-gray-500/20 border-gray-500/20'
-      default: return 'bg-gray-500/10 text-gray-500'
+      case "admin":
+        return "bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/20"
+      case "participant":
+        return "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border-blue-500/20"
+      case "view_only":
+        return "bg-gray-500/10 text-gray-500 hover:bg-gray-500/20 border-gray-500/20"
+      default:
+        return "bg-gray-500/10 text-gray-500"
     }
   }
 
@@ -105,14 +103,14 @@ export function UserRoleManager({ initialUsers }: UserRoleManagerProps) {
                 </TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
-                  <Badge variant="outline" className={getRoleBadgeColor(user.role || 'participant')}>
-                    {user.role || 'participant'}
+                  <Badge variant="outline" className={getRoleBadgeColor(user.role || "participant")}>
+                    {user.role || "participant"}
                   </Badge>
                 </TableCell>
                 <TableCell>
                   <Select
                     disabled={isUpdating === user.id}
-                    value={user.role || 'participant'}
+                    value={user.role || "participant"}
                     onValueChange={(value) => handleRoleChange(user.id, value as UserRole)}
                   >
                     <SelectTrigger className="w-[140px] h-8">

@@ -3,12 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,20 +14,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Target, UserPlus, Users, X, Search, AlertCircle, Loader2, Filter, Trash2 } from 'lucide-react'
+import { Target, UserPlus, Users, X, Search, AlertCircle, Loader2, Trash2 } from "lucide-react"
 import {
   getAllUsers,
   getMissionAssignments,
@@ -51,7 +39,9 @@ export default function AdminMissionsPage() {
   const [missions, setMissions] = useState<Mission[]>([])
   const [users, setUsers] = useState<Profile[]>([])
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null)
-  const [assignments, setAssignments] = useState<Array<MissionAssignment & { profile: { name: string; avatar_url: string | null } }>>([])
+  const [assignments, setAssignments] = useState<
+    Array<MissionAssignment & { profile: { name: string; avatar_url: string | null } }>
+  >([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingAssignments, setIsLoadingAssignments] = useState(false)
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
@@ -63,7 +53,7 @@ export default function AdminMissionsPage() {
   const [isAssigningAll, setIsAssigningAll] = useState(false)
   const [userToRemove, setUserToRemove] = useState<{ userId: string; userName: string } | null>(null)
   const [assignmentCounts, setAssignmentCounts] = useState<Map<string, number>>(new Map())
-  
+
   const [selectedType, setSelectedType] = useState<string>("all")
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const [isBulkAssigning, setIsBulkAssigning] = useState(false)
@@ -79,7 +69,7 @@ export default function AdminMissionsPage() {
       setIsLoading(true)
       setError(null)
       const supabase = createClient()
-      
+
       const [missionsResult, usersResult] = await Promise.all([
         supabase.from("missions").select("*").order("title"),
         getAllUsers(),
@@ -89,7 +79,7 @@ export default function AdminMissionsPage() {
 
       if (missionsResult.data) {
         setMissions(missionsResult.data)
-        await loadAssignmentCounts(missionsResult.data.map(m => m.id))
+        await loadAssignmentCounts(missionsResult.data.map((m) => m.id))
       }
       setUsers(usersResult)
     } catch (error) {
@@ -157,10 +147,12 @@ export default function AdminMissionsPage() {
       setIsBulkAssigning(true)
       const userIds = Array.from(selectedUsers)
       await assignMissionToUsers(selectedMission.id, userIds)
-      
+
       await loadAssignments(selectedMission.id)
-      setAssignmentCounts(prev => new Map(prev).set(selectedMission.id, (prev.get(selectedMission.id) || 0) + userIds.length))
-      
+      setAssignmentCounts((prev) =>
+        new Map(prev).set(selectedMission.id, (prev.get(selectedMission.id) || 0) + userIds.length),
+      )
+
       toast({
         title: "Success",
         description: `Assigned ${userIds.length} users successfully`,
@@ -184,10 +176,12 @@ export default function AdminMissionsPage() {
       setIsBulkRemoving(true)
       const userIds = Array.from(selectedUsers)
       await removeMissionFromUsers(selectedMission.id, userIds)
-      
+
       await loadAssignments(selectedMission.id)
-      setAssignmentCounts(prev => new Map(prev).set(selectedMission.id, Math.max(0, (prev.get(selectedMission.id) || 0) - userIds.length)))
-      
+      setAssignmentCounts((prev) =>
+        new Map(prev).set(selectedMission.id, Math.max(0, (prev.get(selectedMission.id) || 0) - userIds.length)),
+      )
+
       toast({
         title: "Success",
         description: `Removed ${userIds.length} users successfully`,
@@ -210,25 +204,28 @@ export default function AdminMissionsPage() {
     try {
       setAssigningUserId(userId)
       await assignMissionToUser(selectedMission.id, userId)
-      
-      const user = users.find(u => u.id === userId)
+
+      const user = users.find((u) => u.id === userId)
       if (user) {
-        setAssignments(prev => [...prev, {
-          id: crypto.randomUUID(),
-          mission_id: selectedMission.id,
-          user_id: userId,
-          assigned_by: '',
-          assigned_at: new Date().toISOString(),
-          profile: { name: user.name, avatar_url: user.avatar_url }
-        }])
-        setAssignmentCounts(prev => new Map(prev).set(selectedMission.id, (prev.get(selectedMission.id) || 0) + 1))
+        setAssignments((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            mission_id: selectedMission.id,
+            user_id: userId,
+            assigned_by: "",
+            assigned_at: new Date().toISOString(),
+            profile: { name: user.name, avatar_url: user.avatar_url },
+          },
+        ])
+        setAssignmentCounts((prev) => new Map(prev).set(selectedMission.id, (prev.get(selectedMission.id) || 0) + 1))
       }
-      
+
       toast({
         title: "Success",
         description: "Mission assigned successfully",
       })
-      
+
       // Reload to ensure consistency
       await loadAssignments(selectedMission.id)
     } catch (error) {
@@ -251,7 +248,7 @@ export default function AdminMissionsPage() {
       setIsAssigningAll(true)
       const result = await assignMissionToAllParticipants(selectedMission.id)
       await loadAssignments(selectedMission.id)
-      setAssignmentCounts(prev => new Map(prev).set(selectedMission.id, result.count))
+      setAssignmentCounts((prev) => new Map(prev).set(selectedMission.id, result.count))
       toast({
         title: "Success",
         description: `Mission assigned to ${result.count} participants`,
@@ -273,15 +270,17 @@ export default function AdminMissionsPage() {
     try {
       setRemovingUserId(userId)
       await removeMissionAssignment(selectedMission.id, userId)
-      
-      setAssignments(prev => prev.filter(a => a.user_id !== userId))
-      setAssignmentCounts(prev => new Map(prev).set(selectedMission.id, Math.max(0, (prev.get(selectedMission.id) || 0) - 1)))
-      
+
+      setAssignments((prev) => prev.filter((a) => a.user_id !== userId))
+      setAssignmentCounts((prev) =>
+        new Map(prev).set(selectedMission.id, Math.max(0, (prev.get(selectedMission.id) || 0) - 1)),
+      )
+
       toast({
         title: "Success",
         description: "Assignment removed",
       })
-      
+
       setUserToRemove(null)
     } catch (error) {
       toast({
@@ -296,13 +295,14 @@ export default function AdminMissionsPage() {
     }
   }
 
-  const assignedUserIds = new Set(assignments.map(a => a.user_id))
-  
-  const availableUsers = users.filter(u => 
-    u.role === "participant" && 
-    (!showUnassignedOnly || !assignedUserIds.has(u.id)) &&
-    (u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-     u.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+  const assignedUserIds = new Set(assignments.map((a) => a.user_id))
+
+  const availableUsers = users.filter(
+    (u) =>
+      u.role === "participant" &&
+      (!showUnassignedOnly || !assignedUserIds.has(u.id)) &&
+      (u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email?.toLowerCase().includes(searchQuery.toLowerCase())),
   )
 
   const toggleUserSelection = (userId: string) => {
@@ -319,29 +319,37 @@ export default function AdminMissionsPage() {
     if (selectedUsers.size === availableUsers.length) {
       setSelectedUsers(new Set())
     } else {
-      setSelectedUsers(new Set(availableUsers.map(u => u.id)))
+      setSelectedUsers(new Set(availableUsers.map((u) => u.id)))
     }
   }
 
   const getTypeColor = (type?: string) => {
     const normalizedType = (type || "").toLowerCase()
     switch (normalizedType) {
-      case "action": return "bg-[#B91C1C] text-[#FED6DE] border-[#B91C1C] hover:bg-[#B91C1C]/90"
-      case "core": return "bg-[#0072CE] text-[#D9ECF8] border-[#0072CE] hover:bg-[#0072CE]/90"
-      case "lite": return "bg-[#047857] text-[#CCF3E0] border-[#047857] hover:bg-[#047857]/90"
-      case "elevate": return "bg-[#b45309] text-[#FEEFCE] border-[#b45309] hover:bg-[#b45309]/90"
-      default: return "bg-[#404040] text-[#F2F2F2] border-[#404040] hover:bg-[#404040]/90"
+      case "action":
+        return "bg-[#B91C1C] text-[#FED6DE] border-[#B91C1C] hover:bg-[#B91C1C]/90"
+      case "core":
+        return "bg-[#0072CE] text-[#D9ECF8] border-[#0072CE] hover:bg-[#0072CE]/90"
+      case "lite":
+        return "bg-[#047857] text-[#CCF3E0] border-[#047857] hover:bg-[#047857]/90"
+      case "elevate":
+        return "bg-[#b45309] text-[#FEEFCE] border-[#b45309] hover:bg-[#b45309]/90"
+      case "assignment":
+        return "bg-[#404040] text-[#F2F2F2] border-[#404040] hover:bg-[#404040]/90"
+      default:
+        return "bg-[#404040] text-[#F2F2F2] border-[#404040] hover:bg-[#404040]/90"
     }
   }
 
-  const filteredMissions = missions.filter(m => {
-    const matchesSearch = m.title.toLowerCase().includes(missionSearchQuery.toLowerCase()) ||
+  const filteredMissions = missions.filter((m) => {
+    const matchesSearch =
+      m.title.toLowerCase().includes(missionSearchQuery.toLowerCase()) ||
       m.description.toLowerCase().includes(missionSearchQuery.toLowerCase())
     const matchesType = selectedType === "all" || m.type?.toLowerCase() === selectedType.toLowerCase()
     return matchesSearch && matchesType
   })
 
-  const missionTypes = ["all", ...Array.from(new Set(missions.map(m => m.type).filter(Boolean)))]
+  const missionTypes = ["all", ...Array.from(new Set(missions.map((m) => m.type).filter(Boolean)))]
 
   if (error) {
     return (
@@ -382,9 +390,7 @@ export default function AdminMissionsPage() {
               <Target className="h-8 w-8" />
               Mission Assignments
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Assign missions to participants and manage access
-            </p>
+            <p className="text-muted-foreground mt-1">Assign missions to participants and manage access</p>
           </div>
           <Link href="/admin">
             <Button variant="outline">Back to Admin</Button>
@@ -397,7 +403,7 @@ export default function AdminMissionsPage() {
               <CardTitle>All Missions ({missions.length})</CardTitle>
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
-                  {missionTypes.map(type => (
+                  {missionTypes.map((type) => (
                     <Button
                       key={type}
                       variant={selectedType === type ? "default" : "outline"}
@@ -463,22 +469,14 @@ export default function AdminMissionsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={`${getTypeColor(mission.type)} border-0`}>
-                          {mission.type}
-                        </Badge>
+                        <Badge className={`${getTypeColor(mission.type)} border-0`}>{mission.type}</Badge>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{mission.points_value} EP</TableCell>
                       <TableCell>
-                        <Badge variant="outline">
-                          {assignmentCounts.get(mission.id) || 0} users
-                        </Badge>
+                        <Badge variant="outline">{assignmentCounts.get(mission.id) || 0} users</Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSelectMission(mission)}
-                        >
+                        <Button size="sm" variant="outline" onClick={() => handleSelectMission(mission)}>
                           <UserPlus className="h-4 w-4 mr-2" />
                           Manage Access
                         </Button>
@@ -494,9 +492,7 @@ export default function AdminMissionsPage() {
         <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
           <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>
-                Manage Access: {selectedMission?.title}
-              </DialogTitle>
+              <DialogTitle>Manage Access: {selectedMission?.title}</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-6">
@@ -506,8 +502,8 @@ export default function AdminMissionsPage() {
                     <Users className="h-5 w-5" />
                     Assigned Users ({assignments.length})
                   </h3>
-                  <Button 
-                    onClick={handleAssignAll} 
+                  <Button
+                    onClick={handleAssignAll}
                     size="sm"
                     variant="outline"
                     disabled={isAssigningAll || isLoadingAssignments}
@@ -525,9 +521,7 @@ export default function AdminMissionsPage() {
                 ) : assignments.length === 0 ? (
                   <div className="text-center py-8 border rounded-lg bg-muted/50">
                     <Users className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-muted-foreground">
-                      No users assigned yet
-                    </p>
+                    <p className="text-muted-foreground">No users assigned yet</p>
                     <p className="text-sm text-muted-foreground mt-1">
                       Assign users individually or assign to all participants
                     </p>
@@ -542,16 +536,16 @@ export default function AdminMissionsPage() {
                         <div className="flex items-center gap-3">
                           <Avatar>
                             <AvatarImage src={assignment.profile.avatar_url || undefined} />
-                            <AvatarFallback>
-                              {assignment.profile.name.charAt(0)}
-                            </AvatarFallback>
+                            <AvatarFallback>{assignment.profile.name.charAt(0)}</AvatarFallback>
                           </Avatar>
                           <span className="font-medium">{assignment.profile.name}</span>
                         </div>
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => setUserToRemove({ userId: assignment.user_id, userName: assignment.profile.name })}
+                          onClick={() =>
+                            setUserToRemove({ userId: assignment.user_id, userName: assignment.profile.name })
+                          }
                           disabled={removingUserId === assignment.user_id}
                         >
                           {removingUserId === assignment.user_id ? (
@@ -571,21 +565,20 @@ export default function AdminMissionsPage() {
                   <h3 className="text-lg font-semibold">Manage Users</h3>
                   {selectedUsers.size > 0 && (
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={handleBulkRemove}
-                        disabled={isBulkRemoving}
-                      >
-                        {isBulkRemoving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                      <Button size="sm" variant="destructive" onClick={handleBulkRemove} disabled={isBulkRemoving}>
+                        {isBulkRemoving ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 mr-2" />
+                        )}
                         Remove ({selectedUsers.size})
                       </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleBulkAssign}
-                        disabled={isBulkAssigning}
-                      >
-                        {isBulkAssigning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UserPlus className="h-4 w-4 mr-2" />}
+                      <Button size="sm" onClick={handleBulkAssign} disabled={isBulkAssigning}>
+                        {isBulkAssigning ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <UserPlus className="h-4 w-4 mr-2" />
+                        )}
                         Assign ({selectedUsers.size})
                       </Button>
                     </div>
@@ -603,8 +596,8 @@ export default function AdminMissionsPage() {
                     />
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="show-unassigned" 
+                    <Checkbox
+                      id="show-unassigned"
                       checked={showUnassignedOnly}
                       onCheckedChange={(checked) => setShowUnassignedOnly(checked as boolean)}
                     />
@@ -618,15 +611,12 @@ export default function AdminMissionsPage() {
                 </div>
 
                 <div className="flex items-center space-x-2 mb-2 px-3">
-                  <Checkbox 
-                    id="select-all" 
+                  <Checkbox
+                    id="select-all"
                     checked={availableUsers.length > 0 && selectedUsers.size === availableUsers.length}
                     onCheckedChange={toggleSelectAll}
                   />
-                  <label
-                    htmlFor="select-all"
-                    className="text-sm text-muted-foreground"
-                  >
+                  <label htmlFor="select-all" className="text-sm text-muted-foreground">
                     Select All ({availableUsers.length})
                   </label>
                 </div>
@@ -650,7 +640,7 @@ export default function AdminMissionsPage() {
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <Checkbox 
+                            <Checkbox
                               checked={selectedUsers.has(user.id)}
                               onCheckedChange={() => toggleUserSelection(user.id)}
                             />
@@ -662,12 +652,12 @@ export default function AdminMissionsPage() {
                               <div className="font-medium flex items-center gap-2">
                                 {user.name}
                                 {isAssigned && (
-                                  <Badge variant="secondary" className="text-[10px] h-5">Assigned</Badge>
+                                  <Badge variant="secondary" className="text-[10px] h-5">
+                                    Assigned
+                                  </Badge>
                                 )}
                               </div>
-                              <div className="text-sm text-muted-foreground">
-                                {user.job_title}
-                              </div>
+                              <div className="text-sm text-muted-foreground">{user.job_title}</div>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -681,11 +671,7 @@ export default function AdminMissionsPage() {
                                 <X className="h-4 w-4" />
                               </Button>
                             ) : (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleAssignUser(user.id)}
-                              >
+                              <Button size="sm" variant="ghost" onClick={() => handleAssignUser(user.id)}>
                                 <UserPlus className="h-4 w-4" />
                               </Button>
                             )}
@@ -705,8 +691,8 @@ export default function AdminMissionsPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Remove Mission Assignment?</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to remove this mission assignment from {userToRemove?.userName}? 
-                They will no longer have access to this mission.
+                Are you sure you want to remove this mission assignment from {userToRemove?.userName}? They will no
+                longer have access to this mission.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

@@ -65,6 +65,16 @@ export function MissionFilter({ selectedType, onTypeChange, missionCounts, showA
           hoverText: "hover:text-[#FEEFCE]",
           hoverBorder: "hover:border-[#b45309]",
         }
+      case "assignment":
+        return {
+          label: "Assignments",
+          selectedBg: "bg-[#404040]",
+          selectedText: "text-[#F2F2F2]",
+          selectedBorder: "border-[#404040]",
+          hoverBg: "hover:bg-[#404040]",
+          hoverText: "hover:text-[#F2F2F2]",
+          hoverBorder: "hover:border-[#404040]",
+        }
       default:
         // Default styling for any new mission types added by admin
         return {

@@ -1,33 +1,16 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useTransition } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,11 +22,37 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Edit, MessageCircle, Send, Download, BookOpen, Video, FileText, Headphones, Home, GripVertical, Users, Target, CheckCircle, List, Layers, FileSpreadsheet } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Edit,
+  MessageCircle,
+  Send,
+  Download,
+  BookOpen,
+  Video,
+  FileText,
+  Headphones,
+  Home,
+  GripVertical,
+  Users,
+  Target,
+  CheckCircle,
+  List,
+  Layers,
+  FileSpreadsheet,
+} from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { SchemaBuilder } from "@/components/schema-builder"
 import { createMission, updateMission, deleteMission, exportAllData, updateMissionOrder } from "@/lib/actions"
-import { getPrograms, createProgram, updateProgram, deleteProgram, getMissionPrograms, getFullExportData } from "@/lib/admin-actions"
+import {
+  getPrograms,
+  createProgram,
+  updateProgram,
+  deleteProgram,
+  getMissionPrograms,
+  getFullExportData,
+} from "@/lib/admin-actions"
 import { toast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -133,7 +142,7 @@ export default function AdminPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingMission, setEditingMission] = useState<Mission | null>(null)
   const [selectedProgramIds, setSelectedProgramIds] = useState<string[]>([])
-  
+
   const [isAddProgramDialogOpen, setIsAddProgramDialogOpen] = useState(false)
   const [isEditProgramDialogOpen, setIsEditProgramDialogOpen] = useState(false)
   const [editingProgram, setEditingProgram] = useState<Program | null>(null)
@@ -162,7 +171,8 @@ export default function AdminPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file && file.size > 4 * 1024 * 1024) { // 4MB limit
+    if (file && file.size > 4 * 1024 * 1024) {
+      // 4MB limit
       toast({
         title: "File too large",
         description: "Image must be less than 4MB",
@@ -177,6 +187,7 @@ export default function AdminPage() {
     { value: "Core", label: "Core" },
     { value: "Lite", label: "Lite" },
     { value: "Elevate", label: "Elevate" },
+    { value: "Assignment", label: "Assignment" },
   ]
 
   const resourceTypes = [
@@ -258,7 +269,7 @@ export default function AdminPage() {
         if (createMissionSchema) {
           formData.set("submission_schema", JSON.stringify(createMissionSchema))
         }
-        
+
         // Add selected programs
         formData.append("program_ids", JSON.stringify(selectedProgramIds))
 
@@ -319,7 +330,7 @@ export default function AdminPage() {
 
         // Handle image deletion
         if (formData.get("delete_image") === "true") {
-          formData.append("image_url", ""); // Clear image_url in backend if delete_image is true
+          formData.append("image_url", "") // Clear image_url in backend if delete_image is true
         }
 
         // Add selected programs
@@ -595,7 +606,7 @@ export default function AdminPage() {
       })
 
       const data = await getFullExportData()
-      
+
       // Dynamically import xlsx to avoid bloating the bundle
       const XLSX = await import("xlsx")
 
@@ -644,7 +655,6 @@ export default function AdminPage() {
     }
   }
 
-
   // Programs Management Functions
   const fetchPrograms = async () => {
     try {
@@ -659,9 +669,9 @@ export default function AdminPage() {
     try {
       const title = formData.get("title") as string
       const description = formData.get("description") as string
-      
+
       const result = await createProgram(title, description)
-      
+
       if (result.success) {
         setIsAddProgramDialogOpen(false)
         fetchPrograms()
@@ -684,9 +694,9 @@ export default function AdminPage() {
       const id = formData.get("id") as string
       const title = formData.get("title") as string
       const description = formData.get("description") as string
-      
+
       const result = await updateProgram(id, title, description)
-      
+
       if (result.success) {
         setIsEditProgramDialogOpen(false)
         setEditingProgram(null)
@@ -726,19 +736,17 @@ export default function AdminPage() {
   const openEditMissionDialog = async (mission: Mission) => {
     setEditingMission(mission)
     setEditMissionSchema(mission.submission_schema)
-    
+
     // Fetch assigned programs
     const assignedPrograms = await getMissionPrograms(mission.id)
     setSelectedProgramIds(assignedPrograms)
-    
+
     setIsEditDialogOpen(true)
   }
 
   const toggleProgramSelection = (programId: string) => {
-    setSelectedProgramIds(prev => 
-      prev.includes(programId) 
-        ? prev.filter(id => id !== programId)
-        : [...prev, programId]
+    setSelectedProgramIds((prev) =>
+      prev.includes(programId) ? prev.filter((id) => id !== programId) : [...prev, programId],
     )
   }
 
@@ -751,18 +759,14 @@ export default function AdminPage() {
             <p className="text-muted-foreground">Manage missions, submissions, and resources.</p>
           </div>
           <div className="flex gap-2">
-            <Button
-              onClick={() => setIsChatOpen(true)}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
+            <Button onClick={() => setIsChatOpen(true)} variant="outline" className="flex items-center gap-2">
               <MessageCircle className="h-4 w-4" />
               AI Chat
             </Button>
-            <Button 
-              onClick={handleExportExcel} 
-              variant="outline" 
-              className="flex items-center gap-2"
+            <Button
+              onClick={handleExportExcel}
+              variant="outline"
+              className="flex items-center gap-2 bg-transparent"
               disabled={isExporting}
             >
               {isExporting ? (
@@ -775,7 +779,7 @@ export default function AdminPage() {
             <Button
               onClick={handleExport}
               variant="outline"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-transparent"
               disabled={isExporting}
             >
               {isExporting ? (
@@ -786,7 +790,7 @@ export default function AdminPage() {
               Export JSON
             </Button>
             <Link href="/">
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2 bg-transparent">
                 <Home className="h-4 w-4" />
                 View Site
               </Button>
@@ -805,9 +809,7 @@ export default function AdminPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    {item.description}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{item.description}</p>
                 </CardContent>
               </Card>
             </Link>
@@ -972,7 +974,8 @@ export default function AdminPage() {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle className="text-foreground">Delete Program</AlertDialogTitle>
                                     <AlertDialogDescription className="text-muted-foreground">
-                                      Are you sure you want to delete "{program.title}"? Missions in this program will not be deleted.
+                                      Are you sure you want to delete "{program.title}"? Missions in this program will
+                                      not be deleted.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -1003,15 +1006,17 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-
         <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mb-8">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-foreground text-xl sm:text-2xl">Mission Management</CardTitle>
-              <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
-                setIsAddDialogOpen(open)
-                if (open) setSelectedProgramIds([]) // Reset on open
-              }}>
+              <Dialog
+                open={isAddDialogOpen}
+                onOpenChange={(open) => {
+                  setIsAddDialogOpen(open)
+                  if (open) setSelectedProgramIds([]) // Reset on open
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button className="bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 flex items-center gap-2">
                     <Plus className="h-4 w-4" />
@@ -1034,15 +1039,15 @@ export default function AdminPage() {
                         className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                       />
                     </div>
-                    
+
                     {/* Add Programs Selection */}
                     <div>
                       <Label className="text-foreground mb-2 block">Programs / Categories</Label>
                       <div className="bg-white/5 dark:bg-black/10 border border-white/10 rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
                         {programs.map((program) => (
                           <div key={program.id} className="flex items-center space-x-2">
-                            <Checkbox 
-                              id={`program-${program.id}`} 
+                            <Checkbox
+                              id={`program-${program.id}`}
                               checked={selectedProgramIds.includes(program.id)}
                               onCheckedChange={() => toggleProgramSelection(program.id)}
                             />
@@ -1303,12 +1308,8 @@ export default function AdminPage() {
                         <TableCell className="text-foreground font-medium text-sm sm:text-base">
                           {mission.title}
                         </TableCell>
-                        <TableCell className="text-foreground text-xs sm:text-sm">
-                          {mission.type || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-foreground text-xs sm:text-sm">
-                          {mission.points_value}
-                        </TableCell>
+                        <TableCell className="text-foreground text-xs sm:text-sm">{mission.type || "N/A"}</TableCell>
+                        <TableCell className="text-foreground text-xs sm:text-sm">{mission.points_value}</TableCell>
                         <TableCell>
                           <div className="flex gap-1 sm:gap-2">
                             <Dialog
@@ -1351,15 +1352,15 @@ export default function AdminPage() {
                                           className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                                         />
                                       </div>
-                                      
+
                                       {/* Edit Programs Selection */}
                                       <div>
                                         <Label className="text-foreground mb-2 block">Programs / Categories</Label>
                                         <div className="bg-white/5 dark:bg-black/10 border border-white/10 rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
                                           {programs.map((program) => (
                                             <div key={program.id} className="flex items-center space-x-2">
-                                              <Checkbox 
-                                                id={`edit-program-${program.id}`} 
+                                              <Checkbox
+                                                id={`edit-program-${program.id}`}
                                                 checked={selectedProgramIds.includes(program.id)}
                                                 onCheckedChange={() => toggleProgramSelection(program.id)}
                                               />
@@ -1440,18 +1441,20 @@ export default function AdminPage() {
                                                 className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                                 onClick={() => {
                                                   // Add a hidden input to signal image deletion
-                                                  const form = document.getElementById("edit-mission-form") as HTMLFormElement
+                                                  const form = document.getElementById(
+                                                    "edit-mission-form",
+                                                  ) as HTMLFormElement
                                                   if (form) {
                                                     const input = document.createElement("input")
                                                     input.type = "hidden"
                                                     input.name = "delete_image"
                                                     input.value = "true"
                                                     form.appendChild(input)
-                                                    
+
                                                     // Update local state to hide image immediately
                                                     setEditingMission({
                                                       ...editingMission,
-                                                      image_url: null
+                                                      image_url: null,
                                                     })
                                                   }
                                                 }}
@@ -1646,10 +1649,7 @@ export default function AdminPage() {
                                   </AlertDialogCancel>
                                   <form action={handleDeleteMission}>
                                     <input type="hidden" name="id" value={mission.id} />
-                                    <AlertDialogAction
-                                      type="submit"
-                                      className="bg-red-500 hover:bg-red-600 text-white"
-                                    >
+                                    <AlertDialogAction type="submit" className="bg-red-500 hover:bg-red-600 text-white">
                                       Delete
                                     </AlertDialogAction>
                                   </form>

@@ -1,27 +1,28 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Users, Shield, Eye, UserCheck, Pencil, Trash2, FileText, ExternalLink, Mail } from 'lucide-react'
-import { getAllUsers, updateUserRole, adminUpdateUserProfile, fetchUserSubmissions, deleteSubmissionAdmin, deleteUser, inviteUser, type UserSubmission } from "@/lib/admin-actions"
+import { Users, Shield, Eye, UserCheck, Pencil, Trash2, ExternalLink, Mail, Loader2 } from "lucide-react"
+import {
+  getAllUsers,
+  updateUserRole,
+  adminUpdateUserProfile,
+  fetchUserSubmissions,
+  deleteSubmissionAdmin,
+  deleteUser,
+  inviteUser,
+  type UserSubmission,
+  getActivityTreeForAssignment,
+  getUserMissionAssignments,
+  updateUserMissionAssignments,
+} from "@/lib/admin-actions"
 import { toast } from "@/components/ui/use-toast"
 import type { Profile, UserRole } from "@/types/database"
 import Link from "next/link"
@@ -38,8 +39,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { format } from "date-fns"
+import ActivityTreeSelector from "@/components/admin/activity-tree-selector"
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<Profile[]>([])
@@ -48,7 +49,7 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null)
   const [editingUser, setEditingUser] = useState<Profile | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  
+
   const [userSubmissions, setUserSubmissions] = useState<UserSubmission[]>([])
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false)
   const [deletingSubmissionId, setDeletingSubmissionId] = useState<string | null>(null)
@@ -58,6 +59,11 @@ export default function AdminUsersPage() {
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteName, setInviteName] = useState("")
   const [isInviting, setIsInviting] = useState(false)
+
+  const [activityTree, setActivityTree] = useState<any[]>([])
+  const [selectedMissionIds, setSelectedMissionIds] = useState<string[]>([])
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false)
+  const [isSavingAssignments, setIsSavingAssignments] = useState(false)
 
   useEffect(() => {
     loadUsers()
@@ -86,9 +92,9 @@ export default function AdminUsersPage() {
     try {
       setUpdatingUserId(userId)
       await updateUserRole(userId, newRole)
-      
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u))
-      
+
+      setUsers(users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)))
+
       toast({
         title: "Role Updated",
         description: "User role has been updated successfully",
@@ -109,6 +115,7 @@ export default function AdminUsersPage() {
     setIsEditDialogOpen(true)
     setUserSubmissions([])
     loadUserSubmissions(user.id)
+    loadActivityAssignments(user.id)
   }
 
   const loadUserSubmissions = async (userId: string) => {
@@ -133,9 +140,9 @@ export default function AdminUsersPage() {
     try {
       setDeletingSubmissionId(submissionId)
       await deleteSubmissionAdmin(submissionId)
-      
-      setUserSubmissions(userSubmissions.filter(s => s.id !== submissionId))
-      
+
+      setUserSubmissions(userSubmissions.filter((s) => s.id !== submissionId))
+
       toast({
         title: "Submission Deleted",
         description: "The submission has been permanently deleted.",
@@ -152,15 +159,20 @@ export default function AdminUsersPage() {
   }
 
   const handleDeleteUser = async (userId: string, userName: string) => {
-    if (!confirm(`Are you sure you want to delete ${userName}? This will mark their account as deleted and they will no longer have access. This action cannot be undone.`)) return
+    if (
+      !confirm(
+        `Are you sure you want to delete ${userName}? This will mark their account as deleted and they will no longer have access. This action cannot be undone.`,
+      )
+    )
+      return
 
     try {
       setDeletingUserId(userId)
       await deleteUser(userId)
-      
+
       // Remove user from local state
-      setUsers(users.filter(u => u.id !== userId))
-      
+      setUsers(users.filter((u) => u.id !== userId))
+
       toast({
         title: "User Deleted",
         description: `${userName} has been successfully deleted.`,
@@ -216,7 +228,7 @@ export default function AdminUsersPage() {
     try {
       setUpdatingUserId(editingUser.id)
       const formData = new FormData(e.currentTarget)
-      
+
       const updates = {
         name: formData.get("name") as string,
         job_title: formData.get("job_title") as string,
@@ -227,10 +239,10 @@ export default function AdminUsersPage() {
       }
 
       await adminUpdateUserProfile(editingUser.id, updates)
-      
-      setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...updates } : u))
+
+      setUsers(users.map((u) => (u.id === editingUser.id ? { ...u, ...updates } : u)))
       setIsEditDialogOpen(false)
-      
+
       toast({
         title: "Profile Updated",
         description: "User profile has been updated successfully",
@@ -246,14 +258,68 @@ export default function AdminUsersPage() {
     }
   }
 
+  const loadActivityAssignments = async (userId: string) => {
+    try {
+      setIsLoadingActivities(true)
+      const [tree, assignments] = await Promise.all([getActivityTreeForAssignment(), getUserMissionAssignments(userId)])
+      setActivityTree(tree)
+      setSelectedMissionIds(assignments)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load activity assignments",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingActivities(false)
+    }
+  }
+
+  const handleSaveAssignments = async () => {
+    if (!editingUser) return
+
+    try {
+      setIsSavingAssignments(true)
+      await updateUserMissionAssignments(editingUser.id, selectedMissionIds)
+
+      toast({
+        title: "Assignments Updated",
+        description: "User activity assignments have been updated successfully",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update activity assignments",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingAssignments(false)
+    }
+  }
+
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
       case "admin":
-        return <Badge className="bg-red-500"><Shield className="h-3 w-3 mr-1" />Admin</Badge>
+        return (
+          <Badge className="bg-red-500">
+            <Shield className="h-3 w-3 mr-1" />
+            Admin
+          </Badge>
+        )
       case "participant":
-        return <Badge className="bg-green-500"><UserCheck className="h-3 w-3 mr-1" />Participant</Badge>
+        return (
+          <Badge className="bg-green-500">
+            <UserCheck className="h-3 w-3 mr-1" />
+            Participant
+          </Badge>
+        )
       case "view_only":
-        return <Badge className="bg-gray-500"><Eye className="h-3 w-3 mr-1" />View Only</Badge>
+        return (
+          <Badge className="bg-gray-500">
+            <Eye className="h-3 w-3 mr-1" />
+            View Only
+          </Badge>
+        )
       default:
         return <Badge>{role}</Badge>
     }
@@ -261,16 +327,19 @@ export default function AdminUsersPage() {
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
-      case "approved": return "bg-green-500 hover:bg-green-600"
-      case "rejected": return "bg-red-500 hover:bg-red-600"
-      default: return "bg-yellow-500 hover:bg-yellow-600"
+      case "approved":
+        return "bg-green-500 hover:bg-green-600"
+      case "rejected":
+        return "bg-red-500 hover:bg-red-600"
+      default:
+        return "bg-yellow-500 hover:bg-yellow-600"
     }
   }
 
   const roleStats = {
-    admin: users.filter(u => u.role === "admin").length,
-    participant: users.filter(u => u.role === "participant").length,
-    view_only: users.filter(u => u.role === "view_only").length,
+    admin: users.filter((u) => u.role === "admin").length,
+    participant: users.filter((u) => u.role === "participant").length,
+    view_only: users.filter((u) => u.role === "view_only").length,
   }
 
   if (error) {
@@ -308,9 +377,7 @@ export default function AdminUsersPage() {
               <Users className="h-8 w-8" />
               User Management
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Manage user roles and permissions
-            </p>
+            <p className="text-muted-foreground mt-1">Manage user roles and permissions</p>
           </div>
           <div className="flex gap-2">
             <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
@@ -488,18 +555,17 @@ export default function AdminUsersPage() {
           <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>Manage User: {editingUser?.name}</DialogTitle>
-              <DialogDescription>
-                Update profile details or manage submissions.
-              </DialogDescription>
+              <DialogDescription>Update profile details, manage submissions, or assign activities.</DialogDescription>
             </DialogHeader>
-            
+
             {editingUser && (
               <Tabs defaultValue="profile" className="flex-1 flex flex-col overflow-hidden">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="profile">Profile Details</TabsTrigger>
                   <TabsTrigger value="submissions">Submissions</TabsTrigger>
+                  <TabsTrigger value="assignments">Activities Assignments</TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="profile" className="flex-1 overflow-y-auto py-4">
                   <form onSubmit={handleSaveUser} id="edit-user-form">
                     <div className="grid gap-4">
@@ -507,13 +573,7 @@ export default function AdminUsersPage() {
                         <Label htmlFor="name" className="text-right">
                           Name
                         </Label>
-                        <Input
-                          id="name"
-                          name="name"
-                          defaultValue={editingUser.name}
-                          className="col-span-3"
-                          required
-                        />
+                        <Input id="name" name="name" defaultValue={editingUser.name} className="col-span-3" required />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="job_title" className="text-right">
@@ -552,12 +612,7 @@ export default function AdminUsersPage() {
                         <Label htmlFor="bio" className="text-right">
                           Bio
                         </Label>
-                        <Textarea
-                          id="bio"
-                          name="bio"
-                          defaultValue={editingUser.bio || ""}
-                          className="col-span-3"
-                        />
+                        <Textarea id="bio" name="bio" defaultValue={editingUser.bio || ""} className="col-span-3" />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="customer_obsession" className="text-right">
@@ -573,95 +628,121 @@ export default function AdminUsersPage() {
                     </div>
                   </form>
                 </TabsContent>
-                
-                <TabsContent value="submissions" className="flex-1 overflow-hidden flex flex-col">
-                  <div className="flex-1 overflow-y-auto pr-2">
-                    {isLoadingSubmissions ? (
-                      <div className="flex justify-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                      </div>
-                    ) : userSubmissions.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        No submissions found for this user.
+
+                <TabsContent value="submissions" className="flex-1 overflow-y-auto py-4">
+                  {isLoadingSubmissions ? (
+                    <div className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : userSubmissions.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">No submissions found for this user.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      {userSubmissions.map((submission) => (
+                        <Card key={submission.id} className="overflow-hidden">
+                          <CardHeader className="p-4 bg-muted/50 pb-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <CardTitle className="text-sm font-medium">
+                                  {submission.mission?.title || "Unknown Mission"}
+                                </CardTitle>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(submission.created_at), "MMM d, yyyy • h:mm a")}
+                                </div>
+                              </div>
+                              <Badge className={getStatusBadgeVariant(submission.status)}>{submission.status}</Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="p-4 pt-2">
+                            {submission.text_submission && (
+                              <div className="mb-3">
+                                <p className="text-xs font-semibold mb-1">Text Submission:</p>
+                                <p className="text-sm text-muted-foreground line-clamp-3 bg-muted p-2 rounded-md">
+                                  {submission.text_submission}
+                                </p>
+                              </div>
+                            )}
+
+                            {submission.media_url && (
+                              <div className="mb-3">
+                                <p className="text-xs font-semibold mb-1">Media:</p>
+                                <a
+                                  href={submission.media_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-blue-500 hover:underline flex items-center gap-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" /> View Attachment
+                                </a>
+                              </div>
+                            )}
+
+                            <div className="flex justify-between items-center mt-4 pt-2 border-t">
+                              <div className="text-xs font-medium">
+                                Points: {submission.points_awarded} / {submission.mission?.points_value || 0}
+                              </div>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-8"
+                                onClick={() => handleDeleteSubmission(submission.id)}
+                                disabled={deletingSubmissionId === submission.id}
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Delete
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="assignments" className="flex-1 overflow-hidden flex flex-col">
+                  <div className="space-y-4 flex-1 flex flex-col overflow-hidden">
+                    <div>
+                      <h3 className="text-lg font-semibold">Assign Activities</h3>
+                      <p className="text-sm text-muted-foreground">Select which activities to assign to this user</p>
+                    </div>
+
+                    {isLoadingActivities ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin" />
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        {userSubmissions.map((submission) => (
-                          <Card key={submission.id} className="overflow-hidden">
-                            <CardHeader className="p-4 bg-muted/50 pb-2">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <CardTitle className="text-sm font-medium">
-                                    {submission.mission?.title || "Unknown Mission"}
-                                  </CardTitle>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {format(new Date(submission.created_at), "MMM d, yyyy • h:mm a")}
-                                  </div>
-                                </div>
-                                <Badge className={getStatusBadgeVariant(submission.status)}>
-                                  {submission.status}
-                                </Badge>
-                              </div>
-                            </CardHeader>
-                            <CardContent className="p-4 pt-2">
-                              {submission.text_submission && (
-                                <div className="mb-3">
-                                  <p className="text-xs font-semibold mb-1">Text Submission:</p>
-                                  <p className="text-sm text-muted-foreground line-clamp-3 bg-muted p-2 rounded-md">
-                                    {submission.text_submission}
-                                  </p>
-                                </div>
-                              )}
-                              
-                              {submission.media_url && (
-                                <div className="mb-3">
-                                  <p className="text-xs font-semibold mb-1">Media:</p>
-                                  <a 
-                                    href={submission.media_url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-blue-500 hover:underline flex items-center gap-1"
-                                  >
-                                    <ExternalLink className="h-3 w-3" /> View Attachment
-                                  </a>
-                                </div>
-                              )}
-                              
-                              <div className="flex justify-between items-center mt-4 pt-2 border-t">
-                                <div className="text-xs font-medium">
-                                  Points: {submission.points_awarded} / {submission.mission?.points_value || 0}
-                                </div>
-                                <Button 
-                                  variant="destructive" 
-                                  size="sm" 
-                                  className="h-8"
-                                  onClick={() => handleDeleteSubmission(submission.id)}
-                                  disabled={deletingSubmissionId === submission.id}
-                                >
-                                  <Trash2 className="h-3 w-3 mr-1" />
-                                  Delete
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                      <div className="flex-1 overflow-hidden">
+                        <ActivityTreeSelector
+                          activities={activityTree}
+                          selectedMissionIds={selectedMissionIds}
+                          onSelectionChange={setSelectedMissionIds}
+                        />
                       </div>
                     )}
+
+                    <div className="flex justify-end gap-2 pt-4 border-t">
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsEditDialogOpen(false)}
+                        disabled={isSavingAssignments}
+                      >
+                        Cancel
+                      </Button>
+                      <Button onClick={handleSaveAssignments} disabled={isSavingAssignments}>
+                        {isSavingAssignments ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save Assignments"
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </TabsContent>
               </Tabs>
             )}
-            
-            <div className="flex justify-end mt-4 pt-2 border-t">
-               <Button 
-                 type="submit" 
-                 form="edit-user-form" 
-                 disabled={updatingUserId === editingUser?.id}
-                 className={isLoadingSubmissions ? "hidden" : ""}
-               >
-                 {updatingUserId === editingUser?.id ? "Saving..." : "Save Profile Changes"}
-               </Button>
-            </div>
           </DialogContent>
         </Dialog>
       </div>

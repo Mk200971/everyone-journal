@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Check, X, Eye, Calendar, User, Target, FileText, ImageIcon, MessageCircle, Home, Trash2 } from 'lucide-react'
+import { Check, X, Eye, Calendar, User, Target, FileText, ImageIcon, MessageCircle, Home, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -190,7 +190,7 @@ export default function SubmissionReviewPage() {
                     const mediaUrls: string[] = (() => {
                       if (!submission.media_url) return []
                       try {
-                        return typeof submission.media_url === 'string'
+                        return typeof submission.media_url === "string"
                           ? JSON.parse(submission.media_url)
                           : Array.isArray(submission.media_url)
                             ? submission.media_url
@@ -335,7 +335,7 @@ export default function SubmissionReviewPage() {
                                           <ImageIcon className="h-4 w-4" />
                                           Media Submission ({mediaUrls.length})
                                         </h4>
-                                        
+
                                         <div className="grid grid-cols-3 gap-2 mb-3">
                                           {mediaUrls.slice(0, 6).map((url, index) => (
                                             <MediaLightbox
@@ -349,6 +349,7 @@ export default function SubmissionReviewPage() {
                                                       src={url}
                                                       className="w-full h-full object-cover"
                                                       preload="metadata"
+                                                      crossOrigin="anonymous"
                                                     />
                                                   ) : (
                                                     <img
@@ -434,8 +435,7 @@ export default function SubmissionReviewPage() {
                               submission.mission.submission_schema &&
                               (() => {
                                 const schemaFields =
-                                  submission.mission.submission_schema.fields ||
-                                  submission.mission.submission_schema
+                                  submission.mission.submission_schema.fields || submission.mission.submission_schema
                                 return (
                                   <div className="mt-3">
                                     <h5 className="text-xs font-medium text-muted-foreground mb-2">Form Answers:</h5>
@@ -462,7 +462,7 @@ export default function SubmissionReviewPage() {
                                       {Array.isArray(schemaFields) && schemaFields.length > 3 && (
                                         <Dialog>
                                           <DialogTrigger asChild>
-                                            <p 
+                                            <p
                                               className="text-xs text-muted-foreground italic cursor-pointer hover:text-foreground hover:underline transition-colors"
                                               onClick={() => setSelectedSubmission(submission)}
                                             >
@@ -479,7 +479,9 @@ export default function SubmissionReviewPage() {
                                             <div className="space-y-4">
                                               <div>
                                                 <h4 className="font-semibold mb-2">Mission</h4>
-                                                <p className="text-sm text-muted-foreground">{submission.mission.title}</p>
+                                                <p className="text-sm text-muted-foreground">
+                                                  {submission.mission.title}
+                                                </p>
                                                 <p className="text-xs text-muted-foreground mt-1">
                                                   {submission.mission.description}
                                                 </p>
@@ -491,7 +493,9 @@ export default function SubmissionReviewPage() {
                                                     <FileText className="h-4 w-4" />
                                                     Text Submission
                                                   </h4>
-                                                  <p className="text-sm bg-muted p-3 rounded-md">{submission.text_submission}</p>
+                                                  <p className="text-sm bg-muted p-3 rounded-md">
+                                                    {submission.text_submission}
+                                                  </p>
                                                 </div>
                                               )}
 
@@ -507,18 +511,26 @@ export default function SubmissionReviewPage() {
                                                       <div className="space-y-3">
                                                         {Array.isArray(schemaFields) &&
                                                           schemaFields.map((field: any, index: number) => {
-                                                            const fieldKey = field.name || field.label || `question_${index + 1}`
+                                                            const fieldKey =
+                                                              field.name || field.label || `question_${index + 1}`
                                                             const answer =
-                                                              submission.answers[fieldKey] || submission.answers[field.name] || ""
+                                                              submission.answers[fieldKey] ||
+                                                              submission.answers[field.name] ||
+                                                              ""
 
                                                             if (!answer) return null
 
                                                             return (
-                                                              <div key={fieldKey} className="bg-muted/50 p-3 rounded-lg">
+                                                              <div
+                                                                key={fieldKey}
+                                                                className="bg-muted/50 p-3 rounded-lg"
+                                                              >
                                                                 <p className="text-sm font-medium text-foreground mb-1">
                                                                   {field.label || field.name || `Question ${index + 1}`}
                                                                 </p>
-                                                                <p className="text-sm text-muted-foreground">{String(answer)}</p>
+                                                                <p className="text-sm text-muted-foreground">
+                                                                  {String(answer)}
+                                                                </p>
                                                               </div>
                                                             )
                                                           })}
@@ -533,7 +545,9 @@ export default function SubmissionReviewPage() {
                                                   <div className="space-y-2">
                                                     {Object.entries(submission.answers).map(([key, value]) => (
                                                       <div key={key} className="bg-muted p-2 rounded">
-                                                        <p className="text-xs font-medium text-muted-foreground">{key}</p>
+                                                        <p className="text-xs font-medium text-muted-foreground">
+                                                          {key}
+                                                        </p>
                                                         <p className="text-sm">{String(value)}</p>
                                                       </div>
                                                     ))}
@@ -547,7 +561,7 @@ export default function SubmissionReviewPage() {
                                                     <ImageIcon className="h-4 w-4" />
                                                     Media Submission ({mediaUrls.length})
                                                   </h4>
-                                                  
+
                                                   <div className="grid grid-cols-3 gap-2 mb-3">
                                                     {mediaUrls.slice(0, 6).map((url, index) => (
                                                       <MediaLightbox
@@ -561,6 +575,7 @@ export default function SubmissionReviewPage() {
                                                                 src={url}
                                                                 className="w-full h-full object-cover"
                                                                 preload="metadata"
+                                                                crossOrigin="anonymous"
                                                               />
                                                             ) : (
                                                               <img
@@ -635,7 +650,7 @@ export default function SubmissionReviewPage() {
                                   {Object.keys(submission.answers).length > 3 && (
                                     <Dialog>
                                       <DialogTrigger asChild>
-                                        <p 
+                                        <p
                                           className="text-xs text-muted-foreground italic cursor-pointer hover:text-foreground hover:underline transition-colors"
                                           onClick={() => setSelectedSubmission(submission)}
                                         >
@@ -664,7 +679,9 @@ export default function SubmissionReviewPage() {
                                                 <FileText className="h-4 w-4" />
                                                 Text Submission
                                               </h4>
-                                              <p className="text-sm bg-muted p-3 rounded-md">{submission.text_submission}</p>
+                                              <p className="text-sm bg-muted p-3 rounded-md">
+                                                {submission.text_submission}
+                                              </p>
                                             </div>
                                           )}
 
@@ -688,7 +705,7 @@ export default function SubmissionReviewPage() {
                                                 <ImageIcon className="h-4 w-4" />
                                                 Media Submission ({mediaUrls.length})
                                               </h4>
-                                              
+
                                               <div className="grid grid-cols-3 gap-2 mb-3">
                                                 {mediaUrls.slice(0, 6).map((url, index) => (
                                                   <MediaLightbox
@@ -702,6 +719,7 @@ export default function SubmissionReviewPage() {
                                                             src={url}
                                                             className="w-full h-full object-cover"
                                                             preload="metadata"
+                                                            crossOrigin="anonymous"
                                                           />
                                                         ) : (
                                                           <img

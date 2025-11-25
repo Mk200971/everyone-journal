@@ -11,7 +11,18 @@ import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { Upload, FileText, ExternalLink, ArrowLeft, CheckCircle, Plus, Trash2, Save, Loader2, AlertCircle } from 'lucide-react'
+import {
+  Upload,
+  FileText,
+  ExternalLink,
+  ArrowLeft,
+  CheckCircle,
+  Plus,
+  Trash2,
+  Save,
+  Loader2,
+  AlertCircle,
+} from "lucide-react"
 import {
   submitMission,
   saveDraft,
@@ -21,7 +32,7 @@ import {
   createNewSubmission,
 } from "@/lib/actions"
 import Image from "next/image"
-import { useRouter } from 'next/navigation'
+import { useRouter } from "next/navigation"
 import { DynamicFormRenderer } from "@/components/dynamic-form-renderer"
 import type { JsonValue } from "type-fest" // Import JsonValue
 import { parseMediaUrls } from "@/lib/media-utils"
@@ -118,7 +129,6 @@ interface MissionClientProps {
 //   // Should not happen with the given type, but as a fallback
 //   return [mediaUrl];
 // };
-
 
 export function MissionClient({
   mission,
@@ -257,7 +267,7 @@ export function MissionClient({
             console.log(`[v0] Uploading file ${index + 1}/${mediaFiles.length}:`, {
               name: file.name,
               size: file.size,
-              type: file.type
+              type: file.type,
             })
           })
         }
@@ -640,7 +650,11 @@ export function MissionClient({
         if (mediaFiles.length > 0) {
           mediaFiles.forEach((file, index) => {
             formData.append(`mediaFile${index}`, file)
-            console.log(`[v0] handleDynamicEdit - mediaFile${index}:`, { name: file.name, size: file.size, type: file.type })
+            console.log(`[v0] handleDynamicEdit - mediaFile${index}:`, {
+              name: file.name,
+              size: file.size,
+              type: file.type,
+            })
           })
         }
         // </CHANGE>
@@ -664,7 +678,7 @@ export function MissionClient({
           }
 
           router.refresh()
-          
+
           // Wait for refresh to complete before allowing new submissions
           setTimeout(() => {
             setIsProcessing(false)
@@ -751,14 +765,14 @@ export function MissionClient({
     if (draftSubmissions.length > 0 && draftSubmissions[0].media_url) {
       return parseMediaUrls(draftSubmissions[0].media_url)
     }
-    
+
     if (editingSubmission && existingSubmissions.length > 0) {
-      const submission = existingSubmissions.find(s => s.id === editingSubmission)
+      const submission = existingSubmissions.find((s) => s.id === editingSubmission)
       if (submission?.media_url) {
         return parseMediaUrls(submission.media_url)
       }
     }
-    
+
     return []
   }, [draftSubmissions, editingSubmission, existingSubmissions])
 
@@ -1050,7 +1064,7 @@ export function MissionClient({
                               onSubmit={handleDynamicEdit}
                               submitButtonText="Save Changes"
                               isSubmitting={isEditingSubmission}
-                              onSubmittingChange={() => {}} 
+                              onSubmittingChange={() => {}}
                               showSuccessDialogOnSubmit={true}
                               className="bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-4"
                             />
@@ -1120,41 +1134,43 @@ export function MissionClient({
                     ) : (
                       <>
                         {renderSubmissionContent(submission)}
-                        {submission.media_url && (() => {
-                          // Use parseMediaUrls for multi-media display
-                          const urls = parseMediaUrls(submission.media_url)
-                          
-                          return urls.length > 0 ? (
-                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                              {urls.map((url, idx) => {
-                                const ext = url.split('.').pop()?.toLowerCase() || ''
-                                const isVideo = ['mp4', 'mov', 'avi', 'webm'].includes(ext)
-                                
-                                return (
-                                  <div key={idx} className="relative aspect-square">
-                                    {isVideo ? (
-                                      <video
-                                        src={url}
-                                        className="w-full h-full rounded-lg object-cover"
-                                        controls
-                                      />
-                                    ) : (
-                                      <Image
-                                        src={url || "/placeholder.svg"}
-                                        alt={`Submission media ${idx + 1}`}
-                                        fill
-                                        className="rounded-lg object-cover"
-                                        sizes="(max-width: 640px) 50vw, 33vw"
-                                        quality={70}
-                                        loading="lazy"
-                                      />
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          ) : null
-                        })()}
+                        {submission.media_url &&
+                          (() => {
+                            // Use parseMediaUrls for multi-media display
+                            const urls = parseMediaUrls(submission.media_url)
+
+                            return urls.length > 0 ? (
+                              <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {urls.map((url, idx) => {
+                                  const ext = url.split(".").pop()?.toLowerCase() || ""
+                                  const isVideo = ["mp4", "mov", "avi", "webm"].includes(ext)
+
+                                  return (
+                                    <div key={idx} className="relative aspect-square">
+                                      {isVideo ? (
+                                        <video
+                                          src={url}
+                                          className="w-full h-full rounded-lg object-cover"
+                                          controls
+                                          crossOrigin="anonymous"
+                                        />
+                                      ) : (
+                                        <Image
+                                          src={url || "/placeholder.svg"}
+                                          alt={`Submission media ${idx + 1}`}
+                                          fill
+                                          className="rounded-lg object-cover"
+                                          sizes="(max-width: 640px) 50vw, 33vw"
+                                          quality={70}
+                                          loading="lazy"
+                                        />
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            ) : null
+                          })()}
                         <p className="text-xs text-muted-foreground mt-2">
                           Submitted: {new Date(submission.created_at).toLocaleDateString()}
                         </p>

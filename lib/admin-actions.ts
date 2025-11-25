@@ -4,7 +4,14 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { logger } from "@/lib/logger"
-import type { UserRole, MissionTypeEntity, MissionAssignment, Profile, UserSubmission, Program } from "@/types/database"
+import type {
+  UserRole,
+  MissionTypeEntity,
+  MissionAssignment,
+  Profile,
+  UserSubmission as UserSubmissionType,
+  Program,
+} from "@/types/database"
 
 export interface AdminSubmission {
   id: string
@@ -32,22 +39,6 @@ export interface AdminSubmission {
     name: string
     avatar_url: string | null
   }
-}
-
-export interface UserSubmission {
-  id: string
-  mission_id: string
-  user_id: string
-  text_submission: string | null
-  media_url: string | null
-  status: "pending" | "approved" | "rejected"
-  points_awarded: number
-  created_at: string
-  updated_at: string
-  mission: {
-    title: string
-    points_value: number
-  } | null
 }
 
 export interface FullExportData {
@@ -225,23 +216,23 @@ export async function adminUpdateUserProfile(
     bio?: string
     country?: string
     customer_obsession?: string
-  }
+  },
 ): Promise<{ success: boolean }> {
   try {
     await verifyAdminAccess()
     const supabase = createAdminClient()
 
-    const { error } = await supabase
-      .from("profiles")
-      .update(data)
-      .eq("id", userId)
+    const { error } = await supabase.from("profiles").update(data).eq("id", userId)
 
     if (error) throw error
 
     revalidatePath("/admin/users", "max")
     return { success: true }
   } catch (error) {
-    logger.error("Error updating user profile", error, { action: "adminUpdateUserProfile", metadata: { userId, ...data } })
+    logger.error("Error updating user profile", error, {
+      action: "adminUpdateUserProfile",
+      metadata: { userId, ...data },
+    })
     throw new Error("Failed to update user profile")
   }
 }
@@ -268,7 +259,10 @@ export async function getMissionTypes(): Promise<MissionTypeEntity[]> {
 /**
  * Creates a new mission type
  */
-export async function createMissionType(name: string, description?: string): Promise<{ success: boolean; data?: MissionTypeEntity }> {
+export async function createMissionType(
+  name: string,
+  description?: string,
+): Promise<{ success: boolean; data?: MissionTypeEntity }> {
   try {
     await verifyAdminAccess()
     const supabase = createAdminClient()
@@ -366,7 +360,10 @@ export async function assignMissionToAllParticipants(missionId: string): Promise
 /**
  * Assigns a mission to multiple users
  */
-export async function assignMissionToUsers(missionId: string, userIds: string[]): Promise<{ success: boolean; count: number }> {
+export async function assignMissionToUsers(
+  missionId: string,
+  userIds: string[],
+): Promise<{ success: boolean; count: number }> {
   try {
     const { userId: adminId } = await verifyAdminAccess()
     const supabase = createAdminClient()
@@ -463,7 +460,9 @@ export async function removeMissionFromUsers(missionId: string, userIds: string[
 /**
  * Gets all assignments for a mission
  */
-export async function getMissionAssignments(missionId: string): Promise<Array<MissionAssignment & { profile: { name: string; avatar_url: string | null } }>> {
+export async function getMissionAssignments(
+  missionId: string,
+): Promise<Array<MissionAssignment & { profile: { name: string; avatar_url: string | null } }>> {
   try {
     await verifyAdminAccess()
     const supabase = createAdminClient()
@@ -499,7 +498,7 @@ export async function getMissionAssignments(missionId: string): Promise<Array<Mi
   }
 }
 
-export async function fetchUserSubmissions(userId: string): Promise<UserSubmission[]> {
+export async function fetchUserSubmissions(userId: string): Promise<UserSubmissionType[]> {
   try {
     await verifyAdminAccess()
     const supabase = createAdminClient()
@@ -529,7 +528,7 @@ export async function fetchUserSubmissions(userId: string): Promise<UserSubmissi
     return submissions.map((submission) => ({
       ...submission,
       mission: missionsMap.get(submission.mission_id) || null,
-    })) as UserSubmission[]
+    })) as UserSubmissionType[]
   } catch (error) {
     logger.error("Error fetching user submissions", error, { action: "fetchUserSubmissions", metadata: { userId } })
     throw new Error("Failed to fetch user submissions")
@@ -545,15 +544,12 @@ export async function deleteUser(userId: string): Promise<{ success: boolean }> 
     const supabase = createAdminClient()
 
     const { error: authError } = await supabase.auth.admin.deleteUser(userId)
-    
+
     if (authError) {
-       logger.warn("Failed to delete user from Auth, but proceeding with soft delete", { error: authError, userId })
+      logger.warn("Failed to delete user from Auth, but proceeding with soft delete", { error: authError, userId })
     }
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ is_deleted: true })
-      .eq("id", userId)
+    const { error } = await supabase.from("profiles").update({ is_deleted: true }).eq("id", userId)
 
     if (error) throw error
 
@@ -596,10 +592,7 @@ export async function getPrograms(): Promise<Program[]> {
     await verifyAdminAccess()
     const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-      .from("programs")
-      .select("*")
-      .order("created_at", { ascending: true })
+    const { data, error } = await supabase.from("programs").select("*").order("created_at", { ascending: true })
 
     if (error) throw error
 
@@ -613,7 +606,10 @@ export async function getPrograms(): Promise<Program[]> {
 /**
  * Creates a new program
  */
-export async function createProgram(title: string, description?: string): Promise<{ success: boolean; data?: Program }> {
+export async function createProgram(
+  title: string,
+  description?: string,
+): Promise<{ success: boolean; data?: Program }> {
   try {
     await verifyAdminAccess()
     const supabase = createAdminClient()
@@ -665,10 +661,7 @@ export async function deleteProgram(id: string): Promise<{ success: boolean }> {
     await verifyAdminAccess()
     const supabase = createAdminClient()
 
-    const { error } = await supabase
-      .from("programs")
-      .delete()
-      .eq("id", id)
+    const { error } = await supabase.from("programs").delete().eq("id", id)
 
     if (error) throw error
 
@@ -688,17 +681,14 @@ export async function getMissionPrograms(missionId: string): Promise<string[]> {
     await verifyAdminAccess()
     const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-      .from("mission_programs")
-      .select("program_id")
-      .eq("mission_id", missionId)
+    const { data, error } = await supabase.from("mission_programs").select("program_id").eq("mission_id", missionId)
 
     if (error) throw error
 
-    return data?.map(p => p.program_id) || []
+    return data?.map((p) => p.program_id) || []
   } catch (error) {
     logger.error("Error fetching mission programs", error, { action: "getMissionPrograms", metadata: { missionId } })
-    return []
+    throw new Error("Failed to fetch mission programs")
   }
 }
 
@@ -745,21 +735,24 @@ export async function addMissionsToProgram(programId: string, missionIds: string
       return { success: true }
     }
 
-    const records = missionIds.map(missionId => ({
+    const records = missionIds.map((missionId) => ({
       program_id: programId,
-      mission_id: missionId
+      mission_id: missionId,
     }))
 
     const { error } = await supabase
       .from("mission_programs")
-      .upsert(records, { onConflict: 'mission_id,program_id', ignoreDuplicates: true })
+      .upsert(records, { onConflict: "mission_id,program_id", ignoreDuplicates: true })
 
     if (error) throw error
 
     revalidatePath("/admin/programs", "max")
     return { success: true }
   } catch (error) {
-    logger.error("Error adding missions to program", error, { action: "addMissionsToProgram", metadata: { programId, count: missionIds.length } })
+    logger.error("Error adding missions to program", error, {
+      action: "addMissionsToProgram",
+      metadata: { programId, count: missionIds.length },
+    })
     throw new Error("Failed to add missions to program")
   }
 }
@@ -783,7 +776,10 @@ export async function removeMissionFromProgram(programId: string, missionId: str
     revalidatePath("/admin/programs", "max")
     return { success: true }
   } catch (error) {
-    logger.error("Error removing mission from program", error, { action: "removeMissionFromProgram", metadata: { programId, missionId } })
+    logger.error("Error removing mission from program", error, {
+      action: "removeMissionFromProgram",
+      metadata: { programId, missionId },
+    })
     throw new Error("Failed to remove mission from program")
   }
 }
@@ -792,26 +788,32 @@ export async function removeMissionFromProgram(programId: string, missionId: str
  * Assigns a program to users by email
  * This assigns all missions in the program to the users
  */
-export async function assignProgramToUsers(programId: string, emails: string[]): Promise<{ success: boolean; count: number; notFound: string[] }> {
+export async function assignProgramToUsers(
+  programId: string,
+  emails: string[],
+): Promise<{ success: boolean; count: number; notFound: string[] }> {
   try {
     const { userId: adminId } = await verifyAdminAccess()
     const supabase = createAdminClient()
 
     // 1. Get all users to resolve emails (since profiles don't have emails usually)
     // Note: In a large production app, we'd want a better way than fetching all users
-    const { data: { users }, error: usersError } = await supabase.auth.admin.listUsers({ perPage: 1000 })
-    
+    const {
+      data: { users },
+      error: usersError,
+    } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+
     if (usersError) throw usersError
 
-    const emailMap = new Map(users.map(u => [u.email?.toLowerCase(), u.id]))
-    
+    const emailMap = new Map(users.map((u) => [u.email?.toLowerCase(), u.id]))
+
     const userIds: string[] = []
     const notFound: string[] = []
-    
+
     for (const email of emails) {
       const cleanEmail = email.toLowerCase().trim()
       if (!cleanEmail) continue
-      
+
       const id = emailMap.get(cleanEmail)
       if (id) {
         userIds.push(id)
@@ -836,7 +838,7 @@ export async function assignProgramToUsers(programId: string, emails: string[]):
       return { success: true, count: 0, notFound } // No missions to assign
     }
 
-    const missionIds = programMissions.map(pm => pm.mission_id)
+    const missionIds = programMissions.map((pm) => pm.mission_id)
 
     // 3. Create assignments for each user and each mission
     const assignments = []
@@ -845,7 +847,7 @@ export async function assignProgramToUsers(programId: string, emails: string[]):
         assignments.push({
           mission_id: missionId,
           user_id: userId,
-          assigned_by: adminId
+          assigned_by: adminId,
         })
       }
     }
@@ -857,17 +859,20 @@ export async function assignProgramToUsers(programId: string, emails: string[]):
       const chunk = assignments.slice(i, i + chunkSize)
       const { error: assignError } = await supabase
         .from("mission_assignments")
-        .upsert(chunk, { onConflict: 'mission_id,user_id', ignoreDuplicates: true })
-      
+        .upsert(chunk, { onConflict: "mission_id,user_id", ignoreDuplicates: true })
+
       if (assignError) throw assignError
     }
 
     revalidatePath("/admin/missions", "max")
     revalidatePath("/missions", "max")
-    
+
     return { success: true, count: userIds.length, notFound }
   } catch (error) {
-    logger.error("Error assigning program to users", error, { action: "assignProgramToUsers", metadata: { programId, emailCount: emails.length } })
+    logger.error("Error assigning program to users", error, {
+      action: "assignProgramToUsers",
+      metadata: { programId, emailCount: emails.length },
+    })
     throw new Error("Failed to assign program to users")
   }
 }
@@ -877,25 +882,17 @@ export async function getFullExportData(): Promise<FullExportData> {
     await verifyAdminAccess()
     const supabase = createAdminClient()
 
-    const [
-      profiles,
-      missions,
-      submissions,
-      resources,
-      programs,
-      missionPrograms,
-      missionAssignments,
-      missionTypes
-    ] = await Promise.all([
-      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-      supabase.from("missions").select("*").order("created_at", { ascending: false }),
-      supabase.from("submissions").select("*").order("created_at", { ascending: false }),
-      supabase.from("resources").select("*").order("created_at", { ascending: false }),
-      supabase.from("programs").select("*").order("created_at", { ascending: false }),
-      supabase.from("mission_programs").select("*"),
-      supabase.from("mission_assignments").select("*"),
-      supabase.from("mission_types").select("*").order("name", { ascending: true })
-    ])
+    const [profiles, missions, submissions, resources, programs, missionPrograms, missionAssignments, missionTypes] =
+      await Promise.all([
+        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+        supabase.from("missions").select("*").order("created_at", { ascending: false }),
+        supabase.from("submissions").select("*").order("created_at", { ascending: false }),
+        supabase.from("resources").select("*").order("created_at", { ascending: false }),
+        supabase.from("programs").select("*").order("created_at", { ascending: false }),
+        supabase.from("mission_programs").select("*"),
+        supabase.from("mission_assignments").select("*"),
+        supabase.from("mission_types").select("*").order("name", { ascending: true }),
+      ])
 
     // Check for errors
     if (profiles.error) throw profiles.error
@@ -915,7 +912,7 @@ export async function getFullExportData(): Promise<FullExportData> {
       programs: programs.data || [],
       mission_programs: missionPrograms.data || [],
       mission_assignments: missionAssignments.data || [],
-      mission_types: missionTypes.data || []
+      mission_types: missionTypes.data || [],
     }
   } catch (error) {
     logger.error("Error fetching full export data", error, { action: "getFullExportData" })
@@ -942,5 +939,151 @@ export async function getAllMissions(): Promise<any[]> {
   } catch (error) {
     logger.error("Error fetching all missions", error, { action: "getAllMissions" })
     throw new Error("Failed to fetch missions")
+  }
+}
+
+/**
+ * Fetches the hierarchical activity tree structure for user assignment
+ * Returns programs with their associated missions grouped by type
+ */
+export async function getActivityTreeForAssignment(): Promise<
+  Array<{
+    program: Program
+    missions: Array<{
+      id: string
+      title: string
+      type: string
+      description: string | null
+    }>
+  }>
+> {
+  try {
+    await verifyAdminAccess()
+    const supabase = createAdminClient()
+
+    // Fetch all programs
+    const { data: programs, error: programsError } = await supabase
+      .from("programs")
+      .select("*")
+      .order("created_at", { ascending: true })
+
+    if (programsError) throw programsError
+
+    if (!programs || programs.length === 0) {
+      return []
+    }
+
+    // Fetch all mission-program relationships
+    const { data: missionPrograms, error: mpError } = await supabase
+      .from("mission_programs")
+      .select("mission_id, program_id")
+
+    if (mpError) throw mpError
+
+    // Get unique mission IDs
+    const missionIds = Array.from(new Set(missionPrograms?.map((mp) => mp.mission_id) || []))
+
+    // Fetch all missions
+    const { data: missions, error: missionsError } = await supabase
+      .from("missions")
+      .select("id, title, type, description")
+      .in("id", missionIds)
+      .order("type", { ascending: true })
+      .order("title", { ascending: true })
+
+    if (missionsError) throw missionsError
+
+    // Build the tree structure
+    const result = programs.map((program) => {
+      const programMissionIds =
+        missionPrograms?.filter((mp) => mp.program_id === program.id).map((mp) => mp.mission_id) || []
+
+      const programMissions = missions?.filter((m) => programMissionIds.includes(m.id)) || []
+
+      return {
+        program,
+        missions: programMissions,
+      }
+    })
+
+    // Only return programs that have missions
+    return result.filter((item) => item.missions.length > 0)
+  } catch (error) {
+    logger.error("Error fetching activity tree", error, { action: "getActivityTreeForAssignment" })
+    throw new Error("Failed to fetch activity tree")
+  }
+}
+
+/**
+ * Gets all mission assignments for a specific user
+ */
+export async function getUserMissionAssignments(userId: string): Promise<string[]> {
+  try {
+    await verifyAdminAccess()
+    const supabase = createAdminClient()
+
+    const { data, error } = await supabase.from("mission_assignments").select("mission_id").eq("user_id", userId)
+
+    if (error) throw error
+
+    return data?.map((a) => a.mission_id) || []
+  } catch (error) {
+    logger.error("Error fetching user assignments", error, {
+      action: "getUserMissionAssignments",
+      metadata: { userId },
+    })
+    throw new Error("Failed to fetch user assignments")
+  }
+}
+
+/**
+ * Updates a user's mission assignments in bulk
+ * Removes unselected missions and adds newly selected ones
+ *
+ * THIS IS THE PRIMARY CONTROL POINT FOR USER MISSION VISIBILITY
+ * Missions assigned here will be visible to the user on /missions page
+ * Missions not assigned here will be hidden from the user
+ */
+export async function updateUserMissionAssignments(
+  userId: string,
+  missionIds: string[],
+): Promise<{ success: boolean }> {
+  try {
+    const { userId: adminId } = await verifyAdminAccess()
+    const supabase = createAdminClient()
+
+    // This ensures clean state - only checked missions in the tree will be assigned
+    const { error: deleteError } = await supabase.from("mission_assignments").delete().eq("user_id", userId)
+
+    if (deleteError) throw deleteError
+
+    // Each mission checked in the Activity Assignment tree becomes visible to the user
+    if (missionIds.length > 0) {
+      const assignments = missionIds.map((missionId) => ({
+        mission_id: missionId,
+        user_id: userId,
+        assigned_by: adminId,
+      }))
+
+      const { error: insertError } = await supabase.from("mission_assignments").insert(assignments)
+
+      if (insertError) throw insertError
+    }
+
+    revalidatePath("/admin/users", "page")
+    revalidatePath("/missions", "page")
+
+    logger.info("User mission assignments updated", {
+      action: "updateUserMissionAssignments",
+      metadata: { userId, missionCount: missionIds.length, adminId },
+    })
+
+    return { success: true }
+  } catch (error) {
+    logger.error("Error updating user assignments", error, {
+      action: "updateUserMissionAssignments",
+      metadata: { userId, missionCount: missionIds.length },
+    })
+    throw new Error("Failed to update user assignments")
   }
 }

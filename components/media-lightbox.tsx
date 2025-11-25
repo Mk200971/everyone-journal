@@ -1,11 +1,12 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight } from "lucide-react"
 import Image from "next/image"
-import { cn } from "@/lib/utils"
 
 interface MediaLightboxProps {
   mediaUrls: string[]
@@ -28,7 +29,8 @@ export function MediaLightbox({ mediaUrls, initialIndex = 0, trigger }: MediaLig
   }
 
   const isVideo = (url: string) => {
-    return url.includes(".mp4") || url.includes(".mov") || url.includes("video")
+    const ext = url.split("?")[0].split(".").pop()?.toLowerCase() || ""
+    return ["mp4", "mov", "avi", "webm"].includes(ext) || url.includes("video")
   }
 
   return (
@@ -59,6 +61,7 @@ export function MediaLightbox({ mediaUrls, initialIndex = 0, trigger }: MediaLig
                   controls
                   className="max-w-full max-h-full object-contain"
                   autoPlay
+                  crossOrigin="anonymous"
                 />
               ) : (
                 <div className="relative w-full h-full">

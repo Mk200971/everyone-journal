@@ -70,13 +70,21 @@ interface User {
   email: string
 }
 
+interface UserProfile {
+  id: string
+  name: string
+  avatar_url: string | null
+  total_points: number
+  role: string
+}
+
 interface HomePageData {
   missions: Mission[]
   resources: Resource[]
   recentActivity: RecentActivity[]
   topUsers: LeaderboardEntry[]
   user: User | null
-  userProfile: { name: string } | null
+  userProfile: UserProfile | null
   quotes: NoticeboardItem[]
 }
 
@@ -97,37 +105,53 @@ async function getHomePageData(): Promise<HomePageData> {
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, name, avatar_url, total_points")
+      .select("id, name, avatar_url, total_points, role")
       .eq("id", user.id)
       .single()
     userProfile = profile
   }
 
+  let missionsQuery = supabase.from("missions").select(`
+    id,
+    title,
+    description,
+    points_value,
+    type,
+    image_url,
+    duration,
+    coordinator,
+    support_status,
+    due_date,
+    mission_number,
+    resources (
+      id,
+      title,
+      description,
+      type,
+      url
+    )
+  `)
+
+  // Only admins can see all missions - all other users MUST have explicit assignments
+  // This ensures mission visibility is controlled by the Activity Assignment tab in /admin/users
+  if (user && userProfile?.role !== "admin") {
+    const { data: assignments } = await supabase.from("mission_assignments").select("mission_id").eq("user_id", user.id)
+
+    const assignedMissionIds = assignments?.map((a) => a.mission_id) || []
+
+    // If user has no assignments, return empty array
+    // Users can ONLY see missions explicitly assigned to them via /admin/users
+    if (assignedMissionIds.length > 0) {
+      // Filter to show ONLY assigned missions
+      missionsQuery = missionsQuery.in("id", assignedMissionIds)
+    } else {
+      // No assignments = no missions visible
+      missionsQuery = missionsQuery.eq("id", "00000000-0000-0000-0000-000000000000") // UUID that doesn't exist
+    }
+  }
+
   const [missionsResult, resourcesResult, activityResult, topUsersResult, quotesResult] = await Promise.allSettled([
-    supabase
-      .from("missions")
-      .select(`
-        id,
-        title,
-        description,
-        points_value,
-        type,
-        image_url,
-        duration,
-        coordinator,
-        support_status,
-        due_date,
-        mission_number,
-        resources (
-          id,
-          title,
-          description,
-          type,
-          url
-        )
-      `)
-      .order("display_order", { ascending: true, nullsLast: true })
-      .order("created_at", { ascending: true }),
+    missionsQuery.order("display_order", { ascending: true, nullsLast: true }).order("created_at", { ascending: true }),
 
     supabase
       .from("resources")

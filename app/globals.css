@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -84,42 +85,42 @@
 /* Computed all calc() values to static rem values */
 @theme inline {
   --font-sans: Inter, system-ui, sans-serif;
-  --color-background: #fefefe;
-  --color-foreground: #3e3200;
-  --color-card: rgba(255, 255, 255, 0.95);
-  --color-card-foreground: #3e3200;
-  --color-popover: rgba(255, 255, 255, 0.98);
-  --color-popover-foreground: #3e3200;
-  --color-primary: #005956;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #efeadd;
-  --color-secondary-foreground: #3e3200;
-  --color-muted: #efeadd;
-  --color-muted-foreground: #6b7280;
-  --color-accent: #b39759;
-  --color-accent-foreground: #ffffff;
-  --color-destructive: #dc2626;
-  --color-destructive-foreground: #ffffff;
-  --color-border: rgba(0, 89, 86, 0.2);
-  --color-input: rgba(0, 89, 86, 0.1);
-  --color-ring: #005956;
-  --color-chart-1: #005956;
-  --color-chart-2: #b39759;
-  --color-chart-3: #92bcb3;
-  --color-chart-4: #3e3200;
-  --color-chart-5: #efeadd;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --radius-sm: 0.5rem;
   --radius-md: 0.625rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
-  --color-sidebar: #efeadd;
-  --color-sidebar-foreground: #3e3200;
-  --color-sidebar-primary: #005956;
-  --color-sidebar-primary-foreground: #ffffff;
-  --color-sidebar-accent: #b39759;
-  --color-sidebar-accent-foreground: #ffffff;
-  --color-sidebar-border: rgba(0, 89, 86, 0.2);
-  --color-sidebar-ring: #005956;
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 @layer base {
@@ -128,7 +129,7 @@
   }
 
   body {
-    @apply text-foreground;
+    @apply bg-background text-foreground;
     background: linear-gradient(135deg, #efeadd 0%, #ffffff 50%, #92bcb3 100%);
     background-attachment: fixed;
     background-size: cover;
@@ -239,6 +240,20 @@
     --tw-exit-opacity: 0.8;
   }
 
+  /* Added zoom animation utilities */
+  .zoom-in-90 {
+    --tw-enter-scale: 0.9;
+  }
+  .zoom-in-95 {
+    --tw-enter-scale: 0.95;
+  }
+  .zoom-out-90 {
+    --tw-exit-scale: 0.9;
+  }
+  .zoom-out-95 {
+    --tw-exit-scale: 0.95;
+  }
+
   .slide-in-from-top {
     --tw-enter-translate-y: -100%;
   }
@@ -263,7 +278,7 @@
   .slide-out-to-right {
     --tw-exit-translate-x: 100%;
   }
-  
+
   /* Added start/end variants for RTL support */
   .slide-in-from-start {
     --tw-enter-translate-x: -100%;
@@ -277,7 +292,7 @@
   .slide-out-to-end {
     --tw-exit-translate-x: 100%;
   }
-  
+
   .slide-in-from-top-full {
     --tw-enter-translate-y: -100%;
   }
@@ -315,18 +330,34 @@
   .slide-out-to-left-52 {
     --tw-exit-translate-x: -13rem;
   }
+
+  /* Additional slide utilities referenced in errors */
+  .slide-in-from-top-2 {
+    --tw-enter-translate-y: -0.5rem;
+  }
+  .slide-in-from-bottom-2 {
+    --tw-enter-translate-y: 0.5rem;
+  }
+  .slide-in-from-left-2 {
+    --tw-enter-translate-x: -0.5rem;
+  }
+  .slide-in-from-right-2 {
+    --tw-enter-translate-x: 0.5rem;
+  }
 }
 
 @keyframes enter {
   from {
     opacity: var(--tw-enter-opacity, 1);
-    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), 1) rotate(var(--tw-enter-rotate, 0));
+    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), 1) rotate(var(--tw-enter-rotate, 0));
   }
 }
 
 @keyframes exit {
   to {
     opacity: var(--tw-exit-opacity, 1);
-    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), 1) rotate(var(--tw-exit-rotate, 0));
+    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+      scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), 1) rotate(var(--tw-exit-rotate, 0));
   }
 }

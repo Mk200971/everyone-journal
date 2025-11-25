@@ -103,6 +103,7 @@ export function MissionsPageClient({ missions }: MissionsPageClientProps) {
       Core: missions.filter((m) => m.type?.toLowerCase() === "core").length,
       Lite: missions.filter((m) => m.type?.toLowerCase() === "lite").length,
       Elevate: missions.filter((m) => m.type?.toLowerCase() === "elevate").length,
+      Assignment: missions.filter((m) => m.type?.toLowerCase() === "assignment").length,
     }),
     [missions],
   )
