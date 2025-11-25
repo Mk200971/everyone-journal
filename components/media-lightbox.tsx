@@ -7,6 +7,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { X, ChevronLeft, ChevronRight } from "lucide-react"
 import Image from "next/image"
+import { isVideoUrl } from "@/lib/media-utils"
 
 interface MediaLightboxProps {
   mediaUrls: string[]
@@ -26,11 +27,6 @@ export function MediaLightbox({ mediaUrls, initialIndex = 0, trigger }: MediaLig
 
   const goToNext = () => {
     setCurrentIndex((prev) => (prev === mediaUrls.length - 1 ? 0 : prev + 1))
-  }
-
-  const isVideo = (url: string) => {
-    const ext = url.split("?")[0].split(".").pop()?.toLowerCase() || ""
-    return ["mp4", "mov", "avi", "webm"].includes(ext) || url.includes("video")
   }
 
   return (
@@ -54,11 +50,12 @@ export function MediaLightbox({ mediaUrls, initialIndex = 0, trigger }: MediaLig
 
             {/* Main Media */}
             <div className="relative w-full h-full flex items-center justify-center p-4">
-              {isVideo(mediaUrls[currentIndex]) ? (
+              {isVideoUrl(mediaUrls[currentIndex]) ? (
                 <video
                   key={mediaUrls[currentIndex]}
                   src={mediaUrls[currentIndex]}
                   controls
+                  playsInline
                   className="max-w-full max-h-full object-contain"
                   autoPlay
                   crossOrigin="anonymous"

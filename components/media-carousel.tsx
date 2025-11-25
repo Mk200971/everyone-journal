@@ -5,6 +5,7 @@ import Image from "next/image"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { isVideoUrl } from "@/lib/media-utils"
 
 interface MediaCarouselProps {
   mediaUrls: string[]
@@ -26,20 +27,16 @@ export function MediaCarousel({ mediaUrls, className, showControls = true, autoH
     setCurrentIndex((prev) => (prev === mediaUrls.length - 1 ? 0 : prev + 1))
   }
 
-  const isVideo = (url: string) => {
-    const ext = url.split("?")[0].split(".").pop()?.toLowerCase() || ""
-    return ["mp4", "mov", "avi", "webm"].includes(ext) || url.includes("video")
-  }
-
   return (
     <div className={cn("relative group", className)}>
       {/* Main Media Display */}
       <div className={cn("relative overflow-hidden rounded-lg", autoHeight ? "" : "aspect-square")}>
-        {isVideo(mediaUrls[currentIndex]) ? (
+        {isVideoUrl(mediaUrls[currentIndex]) ? (
           <video
             key={mediaUrls[currentIndex]}
             src={mediaUrls[currentIndex]}
             controls
+            playsInline
             className="w-full h-full object-cover"
             preload="metadata"
             crossOrigin="anonymous"
@@ -77,9 +74,9 @@ export function MediaCarousel({ mediaUrls, className, showControls = true, autoH
         )}
       </div>
 
-      {/* Dots Indicator - Show only if more than 1 media */}
+      {/* Dots Indicator - Show only if more than 1 media, hidden on mobile */}
       {mediaUrls.length > 1 && (
-        <div className="flex justify-center gap-1.5 mt-3">
+        <div className="hidden sm:flex justify-center gap-1.5 mt-3">
           {mediaUrls.map((_, index) => (
             <button
               key={index}

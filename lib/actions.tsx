@@ -1378,7 +1378,8 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
         try {
           const urlParts = removedUrl.split("/submissions-media/")
           if (urlParts.length > 1) {
-            const path = urlParts[1]
+            const path = urlParts[1].split("?")[0]
+            // </CHANGE>
             const { error: deleteError } = await supabase.storage.from("submissions-media").remove([path])
 
             if (deleteError) {
@@ -1403,12 +1404,14 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
       const arrayBuffer = await mediaFile.arrayBuffer()
       const blob = new Blob([arrayBuffer], { type: mediaFile.type })
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("submissions-media")
-        .upload(filePath, blob, {
-          contentType: mediaFile.type,
-          upsert: false,
-        })
+      const { data: uploadData, error: uploadError } = await uploadFileWithRetry(
+        supabase,
+        "submissions-media",
+        filePath,
+        blob,
+        mediaFile.type,
+      )
+      // </CHANGE>
 
       if (uploadError) {
         logger.error("updateSubmission - media upload", uploadError, { userId })
@@ -1462,9 +1465,9 @@ export async function updateSubmission(formData: FormData): Promise<UpdateSubmis
       }
     }
 
-    revalidatePath(`/mission/${currentSubmission.mission_id}`, "max")
-    revalidatePath("/", "max")
-    revalidatePath("/activity", "max")
+    revalidatePath(`/mission/${currentSubmission.mission_id}`, "page")
+    revalidatePath("/", "page")
+    revalidatePath("/activity", "page")
 
     return { success: true, data: { wasApproved: currentSubmission.status === "approved" } }
   } catch (error) {
@@ -1641,13 +1644,14 @@ export async function createNewSubmission(formData: FormData): Promise<Submissio
         const arrayBuffer = await mediaFile.arrayBuffer()
         const blob = new Blob([arrayBuffer], { type: mediaFile.type })
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("submissions-media")
-          .upload(filePath, blob, {
-            cacheControl: "3600",
-            contentType: mediaFile.type,
-            upsert: false,
-          })
+        const { data: uploadData, error: uploadError } = await uploadFileWithRetry(
+          supabase,
+          "submissions-media",
+          filePath,
+          blob,
+          mediaFile.type,
+        )
+        // </CHANGE>
 
         if (uploadError) {
           logger.error("createNewSubmission - media upload", uploadError, { userId })
@@ -1710,3 +1714,52 @@ export async function createNewSubmission(formData: FormData): Promise<Submissio
     return handleActionError(error, "createNewSubmission", userId)
   }
 }
+
+async function uploadFileWithRetry(
+  supabase: any,
+  bucket: string,
+  filePath: string,
+  blob: Blob,
+  contentType: string,
+  maxRetries = 3,
+): Promise<{ data: any; error: any }> {
+  let lastError: any = null
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[v0] Upload attempt ${attempt}/${maxRetries} for ${filePath}`)
+
+      const { data, error } = await supabase.storage.from(bucket).upload(filePath, blob, {
+        cacheControl: "3600",
+        contentType,
+        upsert: false,
+      })
+
+      if (!error) {
+        console.log(`[v0] Upload successful on attempt ${attempt}`)
+        return { data, error: null }
+      }
+
+      lastError = error
+      console.log(`[v0] Upload attempt ${attempt} failed:`, error.message)
+
+      // Don't retry on certain errors
+      if (error.message?.includes("duplicate") || error.message?.includes("already exists")) {
+        return { data: null, error }
+      }
+
+      // Wait before retry (exponential backoff)
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
+        console.log(`[v0] Waiting ${delay}ms before retry...`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    } catch (e) {
+      lastError = e
+      console.error(`[v0] Upload attempt ${attempt} exception:`, e)
+    }
+  }
+
+  return { data: null, error: lastError }
+}
+// </CHANGE>

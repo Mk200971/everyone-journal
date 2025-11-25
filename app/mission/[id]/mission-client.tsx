@@ -35,7 +35,7 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { DynamicFormRenderer } from "@/components/dynamic-form-renderer"
 import type { JsonValue } from "type-fest" // Import JsonValue
-import { parseMediaUrls } from "@/lib/media-utils"
+import { parseMediaUrls, isVideoUrl } from "@/lib/media-utils"
 
 interface SubmissionSchema {
   fields?: Array<{
@@ -1142,8 +1142,8 @@ export function MissionClient({
                             return urls.length > 0 ? (
                               <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
                                 {urls.map((url, idx) => {
-                                  const ext = url.split(".").pop()?.toLowerCase() || ""
-                                  const isVideo = ["mp4", "mov", "avi", "webm"].includes(ext)
+                                  const isVideo = isVideoUrl(url)
+                                  // </CHANGE>
 
                                   return (
                                     <div key={idx} className="relative aspect-square">
@@ -1152,6 +1152,7 @@ export function MissionClient({
                                           src={url}
                                           className="w-full h-full rounded-lg object-cover"
                                           controls
+                                          playsInline
                                           crossOrigin="anonymous"
                                         />
                                       ) : (

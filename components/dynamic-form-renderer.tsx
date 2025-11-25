@@ -16,11 +16,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Upload, Loader2, Save, X } from 'lucide-react'
+import { Plus, Trash2, Upload, Loader2, Save, X } from "lucide-react"
 import Image from "next/image"
-import { useRouter } from 'next/navigation'
+import { useRouter } from "next/navigation"
 import type { JsonValue } from "type-fest"
-import imageCompression from 'browser-image-compression'
+import imageCompression from "browser-image-compression"
+import { isVideoUrl, isImageUrl } from "@/lib/media-utils"
 
 interface FormField {
   type: "textarea" | "input" | "select" | "url" | "group"
@@ -72,7 +73,7 @@ export function DynamicFormRenderer({
   const initializedRef = useRef(false)
   const schemaRef = useRef(schema)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [filePreview, setFilePreview] = useState<Array<{file: File, preview: string | null}>>([])
+  const [filePreview, setFilePreview] = useState<Array<{ file: File; preview: string | null }>>([])
   const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [uploadingFileName, setUploadingFileName] = useState<string>("")
   const [isCompressing, setIsCompressing] = useState(false)
@@ -82,9 +83,9 @@ export function DynamicFormRenderer({
   const [formData, setFormData] = useState<Record<string, JsonValue>>(() => initialAnswers || {})
   const [existingMediaUrls, setExistingMediaUrls] = useState<string[]>(() => {
     if (!initialMediaUrls || initialMediaUrls.length === 0) return []
-    
+
     // Handle case where initialMediaUrls might be a JSON string
-    if (typeof initialMediaUrls === 'string') {
+    if (typeof initialMediaUrls === "string") {
       try {
         const parsed = JSON.parse(initialMediaUrls)
         return Array.isArray(parsed) ? parsed : [initialMediaUrls]
@@ -92,7 +93,7 @@ export function DynamicFormRenderer({
         return [initialMediaUrls]
       }
     }
-    
+
     return Array.isArray(initialMediaUrls) ? initialMediaUrls : []
   })
   const [removedMediaUrls, setRemovedMediaUrls] = useState<string[]>([])
@@ -145,40 +146,44 @@ export function DynamicFormRenderer({
 
   useEffect(() => {
     if (initialMediaUrls && initialMediaUrls.length > 0 && initializedRef.current) {
-      const parsedUrls = typeof initialMediaUrls === 'string' 
-        ? (() => {
-            try {
-              const parsed = JSON.parse(initialMediaUrls)
-              return Array.isArray(parsed) ? parsed : [initialMediaUrls]
-            } catch {
-              return [initialMediaUrls]
-            }
-          })()
-        : Array.isArray(initialMediaUrls) 
-          ? initialMediaUrls 
-          : []
-      
+      const parsedUrls =
+        typeof initialMediaUrls === "string"
+          ? (() => {
+              try {
+                const parsed = JSON.parse(initialMediaUrls)
+                return Array.isArray(parsed) ? parsed : [initialMediaUrls]
+              } catch {
+                return [initialMediaUrls]
+              }
+            })()
+          : Array.isArray(initialMediaUrls)
+            ? initialMediaUrls
+            : []
+
       setExistingMediaUrls(parsedUrls)
     }
   }, [JSON.stringify(initialMediaUrls)])
 
-  const removeExistingMedia = useCallback((url: string) => {
-    console.log("[v0] removeExistingMedia called for URL:", url)
-    console.log("[v0] Current existingMediaUrls:", existingMediaUrls)
-    console.log("[v0] Current removedMediaUrls:", removedMediaUrls)
-    
-    setExistingMediaUrls((prev) => {
-      const newUrls = prev.filter((u) => u !== url)
-      console.log("[v0] New existingMediaUrls after removal:", newUrls)
-      return newUrls
-    })
-    
-    setRemovedMediaUrls((prev) => {
-      const newRemoved = [...prev, url]
-      console.log("[v0] New removedMediaUrls after addition:", newRemoved)
-      return newRemoved
-    })
-  }, [existingMediaUrls, removedMediaUrls])
+  const removeExistingMedia = useCallback(
+    (url: string) => {
+      console.log("[v0] removeExistingMedia called for URL:", url)
+      console.log("[v0] Current existingMediaUrls:", existingMediaUrls)
+      console.log("[v0] Current removedMediaUrls:", removedMediaUrls)
+
+      setExistingMediaUrls((prev) => {
+        const newUrls = prev.filter((u) => u !== url)
+        console.log("[v0] New existingMediaUrls after removal:", newUrls)
+        return newUrls
+      })
+
+      setRemovedMediaUrls((prev) => {
+        const newRemoved = [...prev, url]
+        console.log("[v0] New removedMediaUrls after addition:", newRemoved)
+        return newRemoved
+      })
+    },
+    [existingMediaUrls, removedMediaUrls],
+  )
 
   const updateFormData = useCallback((path: string, value: JsonValue) => {
     setFormData((prev) => {
@@ -410,9 +415,12 @@ export function DynamicFormRenderer({
 
     console.log("[v0] DynamicFormRenderer - handleSaveProgress called")
     console.log("[v0] formData:", formData)
-    
+
     const files = fileInputRef.current?.files ? Array.from(fileInputRef.current.files) : []
-    console.log("[v0] mediaFiles from ref:", files.map(f => ({ name: f.name, size: f.size, type: f.type })))
+    console.log(
+      "[v0] mediaFiles from ref:",
+      files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+    )
     console.log("[v0] removedMediaUrls:", removedMediaUrls)
 
     setIsSavingProgress(true)
@@ -440,9 +448,12 @@ export function DynamicFormRenderer({
       console.log("[v0] formData:", formData)
       console.log("[v0] existingMediaUrls:", existingMediaUrls)
       console.log("[v0] removedMediaUrls:", removedMediaUrls)
-      
+
       const files = fileInputRef.current?.files ? Array.from(fileInputRef.current.files) : []
-      console.log("[v0] mediaFiles from ref:", files.map(f => ({ name: f.name, size: f.size, type: f.type })))
+      console.log(
+        "[v0] mediaFiles from ref:",
+        files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+      )
 
       const validateField = (field: FormField, basePath = ""): boolean => {
         const fieldPath = basePath ? `${basePath}.${field.name}` : field.name
@@ -482,10 +493,10 @@ export function DynamicFormRenderer({
         console.log("[v0]   - formData:", formData)
         console.log("[v0]   - files count:", files.length)
         console.log("[v0]   - removedMediaUrls:", removedMediaUrls)
-        
+
         await onSubmit(formData, files, removedMediaUrls)
         console.log("[v0] onSubmit completed successfully")
-        
+
         setFilePreview([])
         setRemovedMediaUrls([])
         setExistingMediaUrls([]) // Clear existing media as it should be refreshed from server
@@ -493,7 +504,7 @@ export function DynamicFormRenderer({
           fileInputRef.current.value = ""
         }
         console.log("[v0] Cleared all media state after submission")
-        
+
         if (showSuccessDialogOnSubmit) {
           setShowSuccessDialog(true)
         }
@@ -534,166 +545,164 @@ export function DynamicFormRenderer({
       console.log(`[v0] Compressing ${file.name}: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
       const compressedFile = await imageCompression(file, options)
       console.log(`[v0] Compressed to: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`)
-      
+
       // Return file with original name
       return new File([compressedFile], file.name, { type: compressedFile.type })
     } catch (error) {
-      console.error('[v0] Compression error:', error)
+      console.error("[v0] Compression error:", error)
       // Return original if compression fails
       return file
     }
   }
 
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    setFileUploadError("")
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || [])
+      setFileUploadError("")
 
-    const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB per image
-    const MAX_VIDEO_SIZE = 50 * 1024 * 1024 // 50MB per video
-    const MAX_IMAGES = 4
-    const MAX_VIDEOS = 2
+      const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB per image
+      const MAX_VIDEO_SIZE = 50 * 1024 * 1024 // 50MB per video
+      const MAX_IMAGES = 4
+      const MAX_VIDEOS = 2
 
-    const images = files.filter(file => file.type.startsWith('image/'))
-    const videos = files.filter(file => file.type.startsWith('video/'))
+      const images = files.filter((file) => file.type.startsWith("image/"))
+      const videos = files.filter((file) => file.type.startsWith("video/"))
 
-    const currentImages = filePreview.filter(f => f.file.type.startsWith('image/'))
-    const currentVideos = filePreview.filter(f => f.file.type.startsWith('video/'))
-    
-    const existingImages = existingMediaUrls.filter(url => {
-      const ext = url.split('.').pop()?.toLowerCase()
-      return ext && ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
-    })
-    const existingVideos = existingMediaUrls.filter(url => {
-      const ext = url.split('.').pop()?.toLowerCase()
-      return ext && ['mp4', 'mov', 'avi'].includes(ext)
-    })
-    
-    const totalImages = currentImages.length + existingImages.length + images.length
-    const totalVideos = currentVideos.length + existingVideos.length + videos.length
-    
-    if (totalImages > MAX_IMAGES) {
-      setFileUploadError(
-        `⚠️ Image Limit Reached: Maximum ${MAX_IMAGES} images allowed.\n` +
-        `Current: ${currentImages.length + existingImages.length} images\n` +
-        `Trying to add: ${images.length} more\n` +
-        `Please remove ${totalImages - MAX_IMAGES} image(s) first.`
-      )
-      e.target.value = ""
-      return
-    }
+      const currentImages = filePreview.filter((f) => f.file.type.startsWith("image/"))
+      const currentVideos = filePreview.filter((f) => f.file.type.startsWith("video/"))
 
-    if (totalVideos > MAX_VIDEOS) {
-      setFileUploadError(
-        `⚠️ Video Limit Reached: Maximum ${MAX_VIDEOS} videos allowed.\n` +
-        `Current: ${currentVideos.length + existingVideos.length} videos\n` +
-        `Trying to add: ${videos.length} more\n` +
-        `Please remove ${totalVideos - MAX_VIDEOS} video(s) first.`
-      )
-      e.target.value = ""
-      return
-    }
+      const existingImages = existingMediaUrls.filter((url) => isImageUrl(url))
+      const existingVideos = existingMediaUrls.filter((url) => isVideoUrl(url))
 
-    for (const video of videos) {
-      if (video.size > MAX_VIDEO_SIZE) {
+      const totalImages = currentImages.length + existingImages.length + images.length
+      const totalVideos = currentVideos.length + existingVideos.length + videos.length
+
+      if (totalImages > MAX_IMAGES) {
         setFileUploadError(
-          `⚠️ Video Too Large: "${video.name}" is ${(video.size / 1024 / 1024).toFixed(1)}MB.\n` +
-          `Maximum allowed: 50MB per video.\n` +
-          `Please compress or choose a smaller video file.`
+          `⚠️ Image Limit Reached: Maximum ${MAX_IMAGES} images allowed.\n` +
+            `Current: ${currentImages.length + existingImages.length} images\n` +
+            `Trying to add: ${images.length} more\n` +
+            `Please remove ${totalImages - MAX_IMAGES} image(s) first.`,
         )
         e.target.value = ""
         return
       }
-    }
 
-    setIsCompressing(true)
-    const processedFiles: File[] = []
-    
-    try {
-      let current = 0
-      const total = files.length
-      
-      for (const file of files) {
-        current++
-        setUploadingFileName(file.name)
-        setUploadProgress(Math.round((current / total) * 100))
-        
-        if (file.type.startsWith('image/')) {
-          // Compress images
-          const compressed = await compressImage(file)
-          
-          // Check size after compression
-          if (compressed.size > MAX_IMAGE_SIZE) {
-            setFileUploadError(
-              `⚠️ Image Still Too Large: "${file.name}" is ${(compressed.size / 1024 / 1024).toFixed(1)}MB even after compression.\n` +
-              `Maximum allowed: 5MB per image.\n` +
-              `Please try resizing the image or using a different format.`
-            )
-            e.target.value = ""
-            setIsCompressing(false)
-            setUploadProgress(0)
-            setUploadingFileName("")
-            return
+      if (totalVideos > MAX_VIDEOS) {
+        setFileUploadError(
+          `⚠️ Video Limit Reached: Maximum ${MAX_VIDEOS} videos allowed.\n` +
+            `Current: ${currentVideos.length + existingVideos.length} videos\n` +
+            `Trying to add: ${videos.length} more\n` +
+            `Please remove ${totalVideos - MAX_VIDEOS} video(s) first.`,
+        )
+        e.target.value = ""
+        return
+      }
+
+      for (const video of videos) {
+        if (video.size > MAX_VIDEO_SIZE) {
+          setFileUploadError(
+            `⚠️ Video Too Large: "${video.name}" is ${(video.size / 1024 / 1024).toFixed(1)}MB.\n` +
+              `Maximum allowed: 50MB per video.\n` +
+              `Please compress or choose a smaller video file.`,
+          )
+          e.target.value = ""
+          return
+        }
+      }
+
+      setIsCompressing(true)
+      const processedFiles: File[] = []
+
+      try {
+        let current = 0
+        const total = files.length
+
+        for (const file of files) {
+          current++
+          setUploadingFileName(file.name)
+          setUploadProgress(Math.round((current / total) * 100))
+
+          if (file.type.startsWith("image/")) {
+            // Compress images
+            const compressed = await compressImage(file)
+
+            // Check size after compression
+            if (compressed.size > MAX_IMAGE_SIZE) {
+              setFileUploadError(
+                `⚠️ Image Still Too Large: "${file.name}" is ${(compressed.size / 1024 / 1024).toFixed(1)}MB even after compression.\n` +
+                  `Maximum allowed: 5MB per image.\n` +
+                  `Please try resizing the image or using a different format.`,
+              )
+              e.target.value = ""
+              setIsCompressing(false)
+              setUploadProgress(0)
+              setUploadingFileName("")
+              return
+            }
+
+            processedFiles.push(compressed)
+          } else {
+            // Videos don't need compression (too heavy for client-side)
+            processedFiles.push(file)
           }
-          
-          processedFiles.push(compressed)
-        } else {
-          // Videos don't need compression (too heavy for client-side)
-          processedFiles.push(file)
         }
-      }
 
-      const totalSize = processedFiles.reduce((sum, file) => sum + file.size, 0)
-      const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2)
+        const totalSize = processedFiles.reduce((sum, file) => sum + file.size, 0)
+        const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2)
 
-      console.log(`[v0] Files processed: ${images.length} images, ${videos.length} videos, ${totalSizeMB}MB total`)
+        console.log(`[v0] Files processed: ${images.length} images, ${videos.length} videos, ${totalSizeMB}MB total`)
 
-      const newPreviews = await Promise.all(processedFiles.map(async (file) => {
-        let preview: string | null = null
-        
-        if (file.type.startsWith('image/')) {
-          preview = URL.createObjectURL(file)
-        } else if (file.type.startsWith('video/')) {
-          // Create video thumbnail
-          preview = URL.createObjectURL(file)
+        const newPreviews = await Promise.all(
+          processedFiles.map(async (file) => {
+            let preview: string | null = null
+
+            if (file.type.startsWith("image/")) {
+              preview = URL.createObjectURL(file)
+            } else if (file.type.startsWith("video/")) {
+              // Create video thumbnail
+              preview = URL.createObjectURL(file)
+            }
+
+            return { file, preview }
+          }),
+        )
+
+        setFilePreview((prev) => [...prev, ...newPreviews])
+
+        if (fileInputRef.current) {
+          const dt = new DataTransfer()
+          // Add existing files
+          const existingFiles = filePreview.map((p) => p.file)
+          existingFiles.forEach((f) => dt.items.add(f))
+          // Add new files
+          processedFiles.forEach((f) => dt.items.add(f))
+          fileInputRef.current.files = dt.files
         }
-        
-        return { file, preview }
-      }))
-      
-      setFilePreview(prev => [...prev, ...newPreviews])
-      
-      if (fileInputRef.current) {
-        const dt = new DataTransfer()
-        // Add existing files
-        const existingFiles = filePreview.map(p => p.file)
-        existingFiles.forEach(f => dt.items.add(f))
-        // Add new files
-        processedFiles.forEach(f => dt.items.add(f))
-        fileInputRef.current.files = dt.files
+      } catch (error) {
+        console.error("[v0] File processing error:", error)
+        setFileUploadError("❌ Error processing files. Please try again.")
+        e.target.value = ""
+      } finally {
+        setIsCompressing(false)
+        setUploadProgress(0)
+        setUploadingFileName("")
       }
-      
-    } catch (error) {
-      console.error('[v0] File processing error:', error)
-      setFileUploadError('❌ Error processing files. Please try again.')
-      e.target.value = ""
-    } finally {
-      setIsCompressing(false)
-      setUploadProgress(0)
-      setUploadingFileName("")
-    }
-  }, [filePreview, existingMediaUrls])
+    },
+    [filePreview, existingMediaUrls],
+  )
 
   const removeMediaFile = useCallback((index: number) => {
-    setFilePreview(prev => {
+    setFilePreview((prev) => {
       const newPreview = prev.filter((_, i) => i !== index)
-      
+
       // Clear the file input and create a new DataTransfer to rebuild file list
       if (fileInputRef.current) {
         const dt = new DataTransfer()
         newPreview.forEach(({ file }) => dt.items.add(file))
         fileInputRef.current.files = dt.files
       }
-      
+
       return newPreview
     })
     console.log("[v0] Removed new media file at index:", index)
@@ -731,16 +740,14 @@ export function DynamicFormRenderer({
               <div className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 <p className="text-sm font-medium text-primary">
-                  {isCompressing ? 'Compressing & processing files...' : 'Processing files...'}
+                  {isCompressing ? "Compressing & processing files..." : "Processing files..."}
                 </p>
               </div>
               {uploadingFileName && (
-                <p className="text-xs text-muted-foreground truncate">
-                  Current: {uploadingFileName}
-                </p>
+                <p className="text-xs text-muted-foreground truncate">Current: {uploadingFileName}</p>
               )}
               <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
-                <div 
+                <div
                   className="bg-primary h-full transition-all duration-300 rounded-full"
                   style={{ width: `${uploadProgress}%` }}
                 />
@@ -751,23 +758,17 @@ export function DynamicFormRenderer({
 
           {existingMediaUrls.length > 0 && (
             <div className="space-y-2 mb-3">
-              <p className="text-sm text-muted-foreground font-medium">
-                Current media ({existingMediaUrls.length}):
-              </p>
+              <p className="text-sm text-muted-foreground font-medium">Current media ({existingMediaUrls.length}):</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {existingMediaUrls.map((url, index) => {
-                  const ext = url.split('.').pop()?.toLowerCase() || ''
-                  const isVideo = ['mp4', 'mov', 'avi', 'webm'].includes(ext)
-                  
+                  const ext = url.split(".").pop()?.toLowerCase() || ""
+                  const isVideo = ["mp4", "mov", "avi", "webm"].includes(ext)
+
                   return (
                     <div key={index} className="relative group">
                       {isVideo ? (
                         <div className="relative w-full aspect-square rounded-lg overflow-hidden border border-white/20 dark:border-white/10 bg-black/20">
-                          <video
-                            src={url}
-                            className="w-full h-full object-cover"
-                            muted
-                          />
+                          <video src={url} className="w-full h-full object-cover" muted />
                           <div className="absolute top-1 right-1 bg-black/70 text-white text-xs px-2 py-1 rounded">
                             Video
                           </div>
@@ -817,14 +818,12 @@ export function DynamicFormRenderer({
 
           {filePreview.length > 0 && (
             <div className="space-y-2 mb-3">
-              <p className="text-sm text-primary font-medium">
-                New media to upload ({filePreview.length}):
-              </p>
+              <p className="text-sm text-primary font-medium">New media to upload ({filePreview.length}):</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {filePreview.map(({ file, preview }, index) => {
-                  const isVideo = file.type.startsWith('video/')
-                  const isImage = file.type.startsWith('image/')
-                  
+                  const isVideo = file.type.startsWith("video/")
+                  const isImage = file.type.startsWith("image/")
+
                   return (
                     <div key={index} className="relative group">
                       <div className="w-full aspect-square rounded-lg border-2 border-primary/50 bg-white/5 dark:bg-black/10 overflow-hidden flex flex-col items-center justify-center p-2">
@@ -840,16 +839,12 @@ export function DynamicFormRenderer({
                           </div>
                         ) : (
                           <>
-                            <div className="text-3xl mb-2">
-                              {isVideo ? '🎥' : '📄'}
-                            </div>
-                            <div className="text-xs text-center truncate w-full px-1 font-medium">
-                              {file.name}
-                            </div>
+                            <div className="text-3xl mb-2">{isVideo ? "🎥" : "📄"}</div>
+                            <div className="text-xs text-center truncate w-full px-1 font-medium">{file.name}</div>
                           </>
                         )}
                         <div className="absolute top-1 right-1 bg-primary/90 text-primary-foreground text-xs px-2 py-1 rounded font-medium">
-                          {isVideo ? 'Video' : 'Image'}
+                          {isVideo ? "Video" : "Image"}
                         </div>
                         <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-1 rounded">
                           {(file.size / (1024 * 1024)).toFixed(1)}MB
@@ -892,14 +887,13 @@ export function DynamicFormRenderer({
               </ul>
               <div className="mt-2 p-2 bg-white/5 rounded border border-white/10">
                 <p className="text-xs font-medium text-foreground">
-                  Current: {existingMediaUrls.filter(u => {
-                    const ext = u.split('.').pop()?.toLowerCase()
-                    return ext && ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
-                  }).length + filePreview.filter(f => f.file.type.startsWith('image/')).length}/4 images, {' '}
-                  {existingMediaUrls.filter(u => {
-                    const ext = u.split('.').pop()?.toLowerCase()
-                    return ext && ['mp4', 'mov', 'avi'].includes(ext)
-                  }).length + filePreview.filter(f => f.file.type.startsWith('video/')).length}/2 videos
+                  Current:{" "}
+                  {existingMediaUrls.filter((u) => isImageUrl(u)).length +
+                    filePreview.filter((f) => f.file.type.startsWith("image/")).length}
+                  /4 images,{" "}
+                  {existingMediaUrls.filter((u) => isVideoUrl(u)).length +
+                    filePreview.filter((f) => f.file.type.startsWith("video/")).length}
+                  /2 videos
                 </p>
               </div>
             </div>
