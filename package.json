@@ -65,7 +65,7 @@
     "sonner": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
-    "type-fest": "latest",
+    "type-fest": "5.1.0",
     "ui": "0.2.4",
     "vaul": "^0.9.9",
     "vue-router": "latest",

@@ -156,6 +156,9 @@ export function MissionClient({
     mediaFile: null,
   })
   const [editDynamicAnswers, setEditDynamicAnswers] = useState<Record<string, JsonValue> | null>(null)
+  const [editRemovedMediaUrls, setEditRemovedMediaUrls] = useState<string[]>([])
+  const [editExistingMediaUrls, setEditExistingMediaUrls] = useState<string[]>([])
+  // </CHANGE>
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [useDynamicForm] = useState(!!mission.submission_schema)
   const [isSavingProgress, startSaveTransition] = useTransition()
@@ -489,12 +492,18 @@ export function MissionClient({
     if (submission.answers && typeof submission.answers === "object" && mission?.submission_schema) {
       setEditDynamicAnswers(submission.answers)
       setEditFormData({ textSubmission: "", mediaFile: null })
+      setEditRemovedMediaUrls([])
+      setEditExistingMediaUrls([])
+      // </CHANGE>
     } else {
       setEditFormData({
         textSubmission: submission.text_submission || "",
         mediaFile: null,
       })
       setEditDynamicAnswers(null)
+      setEditExistingMediaUrls(parseMediaUrls(submission.media_url))
+      setEditRemovedMediaUrls([])
+      // </CHANGE>
     }
 
     toast({
@@ -507,6 +516,9 @@ export function MissionClient({
     setEditingSubmission(null)
     setEditFormData({ textSubmission: "", mediaFile: null })
     setEditDynamicAnswers(null)
+    setEditRemovedMediaUrls([])
+    setEditExistingMediaUrls([])
+    // </CHANGE>
 
     toast({
       title: "Edit Cancelled",
@@ -566,6 +578,12 @@ export function MissionClient({
     })
   }
 
+  const removeEditExistingMedia = (url: string) => {
+    setEditExistingMediaUrls((prev) => prev.filter((u) => u !== url))
+    setEditRemovedMediaUrls((prev) => [...prev, url])
+  }
+  // </CHANGE>
+
   const saveEditedSubmission = async (submissionId: string) => {
     startEditTransition(async () => {
       try {
@@ -582,10 +600,18 @@ export function MissionClient({
           formData.append("mediaFile", editFormData.mediaFile)
         }
 
+        if (editRemovedMediaUrls.length > 0) {
+          formData.append("removedMediaUrls", JSON.stringify(editRemovedMediaUrls))
+        }
+        // </CHANGE>
+
         const result = await updateSubmission(formData)
 
         setEditingSubmission(null)
         setEditFormData({ textSubmission: "", mediaFile: null })
+        setEditRemovedMediaUrls([])
+        setEditExistingMediaUrls([])
+        // </CHANGE>
 
         // Check for success flag and then for wasApproved within data
         if (result.success && result.data?.wasApproved) {
@@ -1091,12 +1117,59 @@ export function MissionClient({
                               />
                             </div>
 
+                            {editExistingMediaUrls.length > 0 && (
+                              <div className="space-y-2">
+                                <Label className="text-foreground font-medium">Current Media</Label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                  {editExistingMediaUrls.map((url, idx) => {
+                                    const isVideo = isVideoUrl(url)
+                                    return (
+                                      <div key={idx} className="relative group aspect-square">
+                                        {isVideo ? (
+                                          <video
+                                            src={url}
+                                            className="w-full h-full rounded-lg object-cover border border-white/20 dark:border-white/10"
+                                            muted
+                                            playsInline
+                                          />
+                                        ) : (
+                                          <Image
+                                            src={url || "/placeholder.svg"}
+                                            alt={`Media ${idx + 1}`}
+                                            fill
+                                            className="rounded-lg object-cover border border-white/20 dark:border-white/10"
+                                            sizes="(max-width: 640px) 50vw, 33vw"
+                                          />
+                                        )}
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          onClick={() => removeEditExistingMedia(url)}
+                                          className="absolute top-1 right-1 h-7 w-7 p-0 rounded-full shadow-lg opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity"
+                                          title="Remove this media"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                        <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                                          {isVideo ? "Video" : "Image"}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            {/* </CHANGE> */}
+
                             <div className="space-y-2">
                               <Label className="text-foreground font-medium flex items-center gap-2">
                                 <Upload className="h-4 w-4 text-primary" />
-                                Update Media (Optional)
+                                {editExistingMediaUrls.length > 0
+                                  ? "Add More Media (Optional)"
+                                  : "Upload Media (Optional)"}
                               </Label>
-                              <div className="bg-white/5 dark:bg-black/10 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-3">
+                              <div className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 rounded-lg p-3">
                                 <Input
                                   type="file"
                                   accept="image/*,video/*"
