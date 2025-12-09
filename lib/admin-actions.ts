@@ -50,6 +50,10 @@ export interface FullExportData {
   mission_programs: any[]
   mission_assignments: any[]
   mission_types: MissionTypeEntity[]
+  noticeboard_items: any[]
+  likes: any[]
+  feedback: any[]
+  profile_activities: any[]
 }
 
 async function verifyAdminAccess(): Promise<{ userId: string; isAdmin: boolean }> {
@@ -882,17 +886,33 @@ export async function getFullExportData(): Promise<FullExportData> {
     await verifyAdminAccess()
     const supabase = createAdminClient()
 
-    const [profiles, missions, submissions, resources, programs, missionPrograms, missionAssignments, missionTypes] =
-      await Promise.all([
-        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-        supabase.from("missions").select("*").order("created_at", { ascending: false }),
-        supabase.from("submissions").select("*").order("created_at", { ascending: false }),
-        supabase.from("resources").select("*").order("created_at", { ascending: false }),
-        supabase.from("programs").select("*").order("created_at", { ascending: false }),
-        supabase.from("mission_programs").select("*"),
-        supabase.from("mission_assignments").select("*"),
-        supabase.from("mission_types").select("*").order("name", { ascending: true }),
-      ])
+    const [
+      profiles,
+      missions,
+      submissions,
+      resources,
+      programs,
+      missionPrograms,
+      missionAssignments,
+      missionTypes,
+      noticeboardItems,
+      likes,
+      feedback,
+      profileActivities,
+    ] = await Promise.all([
+      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      supabase.from("missions").select("*").order("created_at", { ascending: false }),
+      supabase.from("submissions").select("*").order("created_at", { ascending: false }),
+      supabase.from("resources").select("*").order("created_at", { ascending: false }),
+      supabase.from("programs").select("*").order("created_at", { ascending: false }),
+      supabase.from("mission_programs").select("*"),
+      supabase.from("mission_assignments").select("*"),
+      supabase.from("mission_types").select("*").order("name", { ascending: true }),
+      supabase.from("noticeboard_items").select("*").order("created_at", { ascending: false }),
+      supabase.from("likes").select("*").order("created_at", { ascending: false }),
+      supabase.from("feedback").select("*").order("created_at", { ascending: false }),
+      supabase.from("profile_activities").select("*").order("created_at", { ascending: false }),
+    ])
 
     // Check for errors
     if (profiles.error) throw profiles.error
@@ -903,16 +923,103 @@ export async function getFullExportData(): Promise<FullExportData> {
     if (missionPrograms.error) throw missionPrograms.error
     if (missionAssignments.error) throw missionAssignments.error
     if (missionTypes.error) throw missionTypes.error
+    if (noticeboardItems.error) throw noticeboardItems.error
+    if (likes.error) throw likes.error
+    if (feedback.error) throw feedback.error
+    if (profileActivities.error) throw profileActivities.error
+
+    // Create lookup maps for enriching submissions
+    const profilesMap = new Map(profiles.data?.map((p) => [p.id, p]) || [])
+    const missionsMap = new Map(missions.data?.map((m) => [m.id, m]) || [])
+    const likesCountMap = new Map<string, number>()
+
+    // Count likes per submission
+    likes.data?.forEach((like: any) => {
+      const count = likesCountMap.get(like.submission_id) || 0
+      likesCountMap.set(like.submission_id, count + 1)
+    })
+
+    // Enrich submissions with user names, mission titles, and parsed answers
+    const enrichedSubmissions =
+      submissions.data?.map((submission: any) => {
+        const profile = profilesMap.get(submission.user_id)
+        const mission = missionsMap.get(submission.mission_id)
+
+        const enriched: Record<string, any> = {
+          id: submission.id,
+          created_at: submission.created_at,
+          updated_at: submission.updated_at,
+          user_id: submission.user_id,
+          user_name: profile?.name || "Unknown User",
+          user_email: profile?.email || "Unknown Email",
+          mission_id: submission.mission_id,
+          mission_title: mission?.title || "Unknown Mission",
+          mission_type: mission?.type || "Unknown Type",
+          text_submission: submission.text_submission,
+          media_url: submission.media_url ? JSON.stringify(submission.media_url) : null,
+          status: submission.status,
+          points_awarded: submission.points_awarded,
+          likes_count: likesCountMap.get(submission.id) || 0,
+        }
+
+        if (submission.answers && typeof submission.answers === "object") {
+          enriched["answers_raw"] = JSON.stringify(submission.answers)
+        }
+
+        return enriched
+      }) || []
+
+    // Enrich mission assignments with user and mission names
+    const enrichedAssignments =
+      missionAssignments.data?.map((assignment: any) => {
+        const profile = profilesMap.get(assignment.user_id)
+        const mission = missionsMap.get(assignment.mission_id)
+        const assignedBy = profilesMap.get(assignment.assigned_by)
+
+        return {
+          ...assignment,
+          user_name: profile?.name || "Unknown User",
+          user_email: profile?.email || "Unknown Email",
+          mission_title: mission?.title || "Unknown Mission",
+          assigned_by_name: assignedBy?.name || "Unknown Admin",
+        }
+      }) || []
+
+    // Enrich feedback with user info
+    const enrichedFeedback =
+      feedback.data?.map((fb: any) => {
+        const profile = profilesMap.get(fb.user_id)
+        return {
+          ...fb,
+          user_name: profile?.name || "Unknown User",
+          user_email: profile?.email || "Unknown Email",
+        }
+      }) || []
+
+    // Enrich profile activities with user info
+    const enrichedActivities =
+      profileActivities.data?.map((activity: any) => {
+        const profile = profilesMap.get(activity.user_id)
+        return {
+          ...activity,
+          user_name: profile?.name || "Unknown User",
+          changed_fields: activity.changed_fields ? JSON.stringify(activity.changed_fields) : null,
+        }
+      }) || []
 
     return {
       profiles: profiles.data || [],
       missions: missions.data || [],
-      submissions: submissions.data || [],
+      submissions: enrichedSubmissions,
       resources: resources.data || [],
       programs: programs.data || [],
       mission_programs: missionPrograms.data || [],
-      mission_assignments: missionAssignments.data || [],
+      mission_assignments: enrichedAssignments,
       mission_types: missionTypes.data || [],
+      noticeboard_items: noticeboardItems.data || [],
+      likes: likes.data || [],
+      feedback: enrichedFeedback,
+      profile_activities: enrichedActivities,
     }
   } catch (error) {
     logger.error("Error fetching full export data", error, { action: "getFullExportData" })

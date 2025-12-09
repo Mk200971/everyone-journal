@@ -115,8 +115,8 @@ const dashboardItems: DashboardItem[] = [
     href: "/admin/programs",
   },
   {
-    title: "Mission Assignments",
-    description: "Assign missions to participants",
+    title: "Activity Assignments",
+    description: "Assign activities to participants",
     icon: Target,
     href: "/admin/missions",
   },
@@ -622,7 +622,6 @@ export default function AdminPage() {
         XLSX.utils.book_append_sheet(wb, ws, name)
       }
 
-      // Add sheets for each table
       addSheet("Profiles", data.profiles)
       addSheet("Missions", data.missions)
       addSheet("Submissions", data.submissions)
@@ -631,13 +630,28 @@ export default function AdminPage() {
       addSheet("Mission Programs", data.mission_programs)
       addSheet("Mission Assignments", data.mission_assignments)
       addSheet("Mission Types", data.mission_types)
+      addSheet("Noticeboard", data.noticeboard_items)
+      addSheet("Likes", data.likes)
+      addSheet("Feedback", data.feedback)
+      addSheet("Profile Activities", data.profile_activities)
 
       // Generate filename with date
       const date = new Date().toISOString().split("T")[0]
       const fileName = `everyone-journal-full-export-${date}.xlsx`
 
-      // Write file
-      XLSX.writeFile(wb, fileName)
+      // Generate binary string and create blob for download
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+      const blob = new Blob([wbout], { type: "application/octet-stream" })
+
+      // Create download link and trigger download
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
 
       toast({
         title: "Export Complete",
@@ -756,7 +770,7 @@ export default function AdminPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-            <p className="text-muted-foreground">Manage missions, submissions, and resources.</p>
+            <p className="text-muted-foreground">Manage activities, submissions, and resources.</p>
           </div>
           <div className="flex gap-2">
             <Button onClick={() => setIsChatOpen(true)} variant="outline" className="flex items-center gap-2">
@@ -1009,7 +1023,7 @@ export default function AdminPage() {
         <Card className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 mb-8">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-foreground text-xl sm:text-2xl">Mission Management</CardTitle>
+              <CardTitle className="text-foreground text-xl sm:text-2xl">Activity Management</CardTitle>
               <Dialog
                 open={isAddDialogOpen}
                 onOpenChange={(open) => {
@@ -1020,12 +1034,12 @@ export default function AdminPage() {
                 <DialogTrigger asChild>
                   <Button className="bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 flex items-center gap-2">
                     <Plus className="h-4 w-4" />
-                    Add Mission
+                    Add Activity
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle className="text-foreground">Add New Mission</DialogTitle>
+                    <DialogTitle className="text-foreground">Add New Activity</DialogTitle>
                   </DialogHeader>
                   <form action={handleCreateMission} className="space-y-4">
                     <div>
@@ -1061,7 +1075,7 @@ export default function AdminPage() {
                         ))}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Select which programs this mission belongs to.
+                        Select which programs this activity belongs to.
                       </p>
                     </div>
 
@@ -1078,12 +1092,12 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <Label htmlFor="instructions" className="text-foreground">
-                        Mission Instructions (Optional)
+                        Activity Instructions (Optional)
                       </Label>
                       <Textarea
                         id="instructions"
                         name="instructions"
-                        placeholder="Enter step-by-step instructions for completing this mission..."
+                        placeholder="Enter step-by-step instructions for completing this activity..."
                         className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                         rows={4}
                       />
@@ -1102,7 +1116,7 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <Label htmlFor="mission-image" className="text-foreground">
-                        Mission Image (Optional)
+                        Activity Image (Optional)
                       </Label>
                       <Input
                         id="mission-image"
@@ -1113,7 +1127,7 @@ export default function AdminPage() {
                         className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground file:bg-primary file:text-primary-foreground file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Upload an image to make the mission more engaging (max 4MB)
+                        Upload an image to make the activity more engaging (max 4MB)
                       </p>
                     </div>
                     <div>
@@ -1151,11 +1165,11 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <Label htmlFor="type" className="text-foreground">
-                        Mission Type
+                        Activity Type
                       </Label>
                       <Select name="type" required onValueChange={(value) => setSelectedMissionType(value)}>
                         <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                          <SelectValue placeholder="Select mission type" />
+                          <SelectValue placeholder="Select activity type" />
                         </SelectTrigger>
                         <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
                           {missionTypes.map((type) => (
@@ -1203,7 +1217,7 @@ export default function AdminPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="mission_number" className="text-foreground">
-                          Mission Number
+                          Activity Number
                         </Label>
                         <Input
                           id="mission_number"
@@ -1214,7 +1228,7 @@ export default function AdminPage() {
                           readOnly
                           className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">Auto-generated based on mission type</p>
+                        <p className="text-xs text-muted-foreground mt-1">Auto-generated based on activity type</p>
                       </div>
                       <div>
                         <Label htmlFor="points_value" className="text-foreground">
@@ -1231,7 +1245,7 @@ export default function AdminPage() {
                           className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Points awarded when mission is completed (required)
+                          Points awarded when activity is completed (required)
                         </p>
                       </div>
                     </div>
@@ -1262,7 +1276,7 @@ export default function AdminPage() {
                       disabled={isCreatingMission}
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                     >
-                      {isCreatingMission ? "Creating..." : "Create Mission"}
+                      {isCreatingMission ? "Creating..." : "Create Activity"}
                     </Button>
                   </form>
                 </DialogContent>
@@ -1334,7 +1348,7 @@ export default function AdminPage() {
                               </DialogTrigger>
                               <DialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0 max-w-md sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                                 <DialogHeader>
-                                  <DialogTitle className="text-foreground">Edit Mission</DialogTitle>
+                                  <DialogTitle className="text-foreground">Edit Activity</DialogTitle>
                                 </DialogHeader>
                                 <form id="edit-mission-form" action={handleUpdateMission} className="space-y-4">
                                   {editingMission && (
@@ -1389,13 +1403,13 @@ export default function AdminPage() {
                                       </div>
                                       <div>
                                         <Label htmlFor="edit-instructions" className="text-foreground">
-                                          Mission Instructions (Optional)
+                                          Activity Instructions (Optional)
                                         </Label>
                                         <Textarea
                                           id="edit-instructions"
                                           name="instructions"
                                           defaultValue={editingMission.instructions || ""}
-                                          placeholder="Enter step-by-step instructions for completing this mission..."
+                                          placeholder="Enter step-by-step instructions for completing this activity..."
                                           className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                                           rows={4}
                                         />
@@ -1415,7 +1429,7 @@ export default function AdminPage() {
                                       </div>
                                       <div>
                                         <Label htmlFor="edit-mission-image" className="text-foreground">
-                                          Mission Image (Optional)
+                                          Activity Image (Optional)
                                         </Label>
                                         <Input
                                           id="edit-mission-image"
@@ -1431,7 +1445,7 @@ export default function AdminPage() {
                                             <div className="relative">
                                               <img
                                                 src={editingMission.image_url || "/placeholder.svg"}
-                                                alt="Current mission image"
+                                                alt="Current activity image"
                                                 className="w-full max-w-[200px] h-auto rounded-md border border-white/10"
                                               />
                                               <Button
@@ -1506,11 +1520,11 @@ export default function AdminPage() {
                                       </div>
                                       <div>
                                         <Label htmlFor="edit-type" className="text-foreground">
-                                          Mission Type
+                                          Activity Type
                                         </Label>
                                         <Select name="type" defaultValue={editingMission.type}>
                                           <SelectTrigger className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground">
-                                            <SelectValue placeholder="Select mission type" />
+                                            <SelectValue placeholder="Select activity type" />
                                           </SelectTrigger>
                                           <SelectContent className="bg-white/90 dark:bg-black/90 backdrop-blur-lg border border-white/20 dark:border-white/10">
                                             {missionTypes.map((type) => (
@@ -1558,7 +1572,7 @@ export default function AdminPage() {
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
                                           <Label htmlFor="edit-mission_number" className="text-foreground">
-                                            Mission Number
+                                            Activity Number
                                           </Label>
                                           <Input
                                             id="edit-mission_number"
@@ -1570,7 +1584,7 @@ export default function AdminPage() {
                                             className="bg-white/10 dark:bg-black/20 backdrop-blur-lg border border-white/20 dark:border-white/10 text-foreground placeholder:text-muted-foreground"
                                           />
                                           <p className="text-xs text-muted-foreground mt-1">
-                                            Mission number for identification (optional)
+                                            Activity number for identification (optional)
                                           </p>
                                         </div>
                                         <div>
@@ -1619,7 +1633,7 @@ export default function AdminPage() {
                                         disabled={isUpdatingMission}
                                         className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                                       >
-                                        {isUpdatingMission ? "Updating..." : "Update Mission"}
+                                        {isUpdatingMission ? "Updating..." : "Update Activity"}
                                       </Button>
                                     </>
                                   )}
@@ -1638,7 +1652,7 @@ export default function AdminPage() {
                               </AlertDialogTrigger>
                               <AlertDialogContent className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 mx-3 sm:mx-0">
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle className="text-foreground">Delete Mission</AlertDialogTitle>
+                                  <AlertDialogTitle className="text-foreground">Delete Activity</AlertDialogTitle>
                                   <AlertDialogDescription className="text-muted-foreground">
                                     Are you sure you want to delete "{mission.title}"? This action cannot be undone.
                                   </AlertDialogDescription>
@@ -1968,7 +1982,7 @@ export default function AdminPage() {
                   <div className="text-xs sm:text-sm space-y-1 text-slate-500 dark:text-slate-500">
                     <p>• "Show me top performing employees"</p>
                     <p>• "What are our engagement metrics?"</p>
-                    <p>• "Analyze mission completion rates"</p>
+                    <p>• "Analyze activity completion rates"</p>
                   </div>
                 </div>
               ) : (
